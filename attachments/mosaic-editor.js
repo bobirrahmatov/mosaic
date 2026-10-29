@@ -12,13 +12,13 @@
     bold:'M6 4h7a4 4 0 0 1 0 8H6zm0 8h8a4 4 0 0 1 0 8H6z',italic:'M10 4h10M4 20h10M15 4 9 20',underline:'M6 4v7a6 6 0 0 0 12 0V4M4 21h16',strike:'M18 6c-1-2-3-3-6-3-4 0-6 2-6 5 0 2 2 3 6 4m-7 5c1 3 4 4 7 4 4 0 6-2 6-5M3 12h18',link:'M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-2 2M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l2-2',quote:'M4 7h6v6H4c0 4 2 5 4 5M14 7h6v6h-6c0 4 2 5 4 5',code:'m8 8-5 4 5 4m8-8 5 4-5 4M14 5l-4 14',image:'M3 3h18v18H3zM3 17l6-6 4 4 3-3 5 5M16 7h.01',file:'M14 3H5v18h14V8zM14 3v5h5M8 13h8M8 17h6',list:'M9 6h12M9 12h12M9 18h12M3 6h.01M3 12h.01M3 18h.01',ordered:'M10 6h11M10 12h11M10 18h11M3 3h2v6M3 9h4M3 14c0-2 4-2 4 0 0 1-4 4-4 6h4',codeblock:'M7 3H3v18h4M17 3h4v18h-4m-7-7-3-2 3-2m4 4 3-2-3-2',table:'M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18',divider:'M3 12h18',clear:'m5 4 14 16M8 4h12M14 4l-4 16M5 20h9M3 3l18 18',undo:'M3 10h12a6 6 0 0 1 0 12M3 10l5-5M3 10l5 5',redo:'M21 10H9a6 6 0 0 0 0 12M21 10l-5-5M21 10l-5 5',expand:'M9 3H3v6M15 3h6v6M3 15v6h6M21 15v6h-6',close:'m6 6 12 12M18 6 6 18',arrow:'M4 12h16m-6-6 6 6-6 6',eye:'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12m7 0a3 3 0 1 0 6 0 3 3 0 0 0-6 0'
   };
   function icon(name) { return '<svg class="mosaic-ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + ICONS[name] + '"/></svg>'; }
-  function tool(attribute, value, label, name) { return '<button type="button" ' + attribute + '="' + value + '" aria-label="' + label + '" title="' + label + '" disabled>' + icon(name) + '</button>'; }
+  function tool(attribute, value, label, name) { return '<button type="button" ' + attribute + '="' + value + '" aria-label="' + label + '" title="' + label + '"' + (attribute === 'data-open' ? ' aria-haspopup="dialog" aria-expanded="false"' : '') + ' disabled>' + icon(name) + '</button>'; }
   function nativeURL(config, page, parentId) {
     var context = String(config.contextPath || '/confluence').replace(/\/+$/, '');
     return page && page.id ? context + '/pages/editpage.action?pageId=' + encodeURIComponent(page.id) : context + '/pages/createpage.action?' + new URLSearchParams({spaceKey:config.spaceKey,fromPageId:parentId || config.pages.insights});
   }
   function sanitizeHTML(value, purifier, doc) {
-    if (!purifier || typeof purifier.sanitize !== 'function') throw new Error('The article editor could not load its content sanitizer. Use the native Confluence editor.');
+    if (!purifier || typeof purifier.sanitize !== 'function') throw new Error('The article editor could not load its content sanitizer. Reload the page to try again.');
     var clean = purifier.sanitize(String(value || ''), {ALLOWED_TAGS:TAGS,ALLOWED_ATTR:ATTRS,ALLOW_DATA_ATTR:false,ALLOW_ARIA_ATTR:false,KEEP_CONTENT:true,FORBID_TAGS:['script','style','iframe','object','embed','svg','math']});
     var box = doc.createElement('div'); box.innerHTML = clean;
     box.querySelectorAll('a[href]').forEach(function (link) { if (!root.MosaicAPI.safeURL(link.getAttribute('href'))) link.removeAttribute('href'); });
@@ -48,26 +48,24 @@
       '<label class="mosaic-editor-summary-label">Summary <span>Optional</span><textarea class="mosaic-editor-summary" name="summary" maxlength="1000" rows="2" placeholder="A short introduction to your page" disabled></textarea></label></div>' +
       '<div class="mosaic-editor-content-label">Content</div><div class="mosaic-editor-writing"><div class="mosaic-editor-toolbar" role="toolbar" aria-label="Article formatting"><div class="mosaic-editor-format" data-format></div>' +
       tool('data-command','bold','Bold · Ctrl / ⌘ B','bold') + tool('data-command','italic','Italic · Ctrl / ⌘ I','italic') + tool('data-command','underline','Underline · Ctrl / ⌘ U','underline') + tool('data-command','strikeThrough','Strikethrough','strike') + '<span class="mosaic-editor-divider"></span>' +
-      tool('data-open','link','Insert link','link') + tool('data-action','quote','Block quote','quote') + tool('data-action','code','Inline code','code') + tool('data-open','image','Insert image','image') + tool('data-action','files','Attach files','file') + '<span class="mosaic-editor-toolbar-break"></span>' +
+      tool('data-open','link','Insert link','link') + tool('data-action','quote','Block quote','quote') + tool('data-action','code','Inline code','code') + tool('data-open','image','Insert image','image') + tool('data-open','files','Attach files','file') + '<span class="mosaic-editor-toolbar-break"></span>' +
       tool('data-command','insertUnorderedList','Bulleted list','list') + tool('data-command','insertOrderedList','Numbered list','ordered') + tool('data-action','codeblock','Code block','codeblock') + tool('data-open','table','Insert table','table') + tool('data-action','divider','Horizontal divider','divider') + tool('data-command','removeFormat','Clear formatting','clear') + '<span class="mosaic-editor-divider"></span>' +
       tool('data-command','undo','Undo','undo') + tool('data-command','redo','Redo','redo') + tool('data-action','expand','Expand editor','expand') + '</div>' +
       '<div class="mosaic-editor-insert" data-panel="link" hidden><label>Link text<input type="text" data-link-text maxlength="300"></label><label>Resource URL<input type="url" data-link-url placeholder="https://… or /confluence/…" autocomplete="off"></label><p class="mosaic-editor-dialog-error" role="alert" hidden></p><div class="mosaic-editor-dialog-actions"><button type="button" data-close>Cancel</button><button type="button" data-insert-link data-dialog-primary>Insert link</button></div><button type="button" data-remove-link class="mosaic-editor-dialog-remove" hidden>Remove link</button></div>' +
       '<div class="mosaic-editor-insert" data-panel="table" hidden><p class="mosaic-editor-dialog-intro" data-table-intro>The first row contains column headings. Edit any cell directly in the document.</p><div class="mosaic-editor-dialog-grid" data-new-table><label>Rows<input type="number" data-table-rows min="2" max="12" value="3"></label><label>Columns<input type="number" data-table-cols min="1" max="8" value="3"></label></div><div class="mosaic-editor-dialog-table-tools" data-edit-table hidden><button type="button" data-table="row">Add row</button><button type="button" data-table="column">Add column</button><button type="button" data-table="before">Text before table</button><button type="button" data-table="after">Text after table</button><button type="button" data-table="remove" class="mosaic-editor-dialog-remove">Remove table</button></div><p class="mosaic-editor-dialog-error" role="alert" hidden></p><div class="mosaic-editor-dialog-actions"><button type="button" data-close>Cancel</button><button type="button" data-insert-table data-dialog-primary>Insert table</button></div></div>' +
       '<div class="mosaic-editor-insert" data-panel="image" hidden><p class="mosaic-editor-dialog-intro">Add an image where your cursor is. Its description is included for readers using assistive technology.</p><label class="mosaic-editor-dialog-upload">' + icon('image') + '<span data-image-choice>Choose PNG, JPG, WebP, or GIF</span><input type="file" data-image-file accept="image/png,image/jpeg,image/webp,image/gif" class="mosaic-editor-sr"></label><img data-image-preview class="mosaic-editor-dialog-image-preview" alt="" hidden><label>Or use an image URL<input type="url" data-image-url placeholder="/confluence/download/attachments/…" autocomplete="off"></label><label>Image description<input type="text" data-image-alt maxlength="500" placeholder="Describe what this image shows"></label><p class="mosaic-editor-file-hint">Up to 5 MB · images are saved as native page attachments.</p><p class="mosaic-editor-dialog-error" role="alert" hidden></p><div class="mosaic-editor-dialog-actions"><button type="button" data-close>Cancel</button><button type="button" data-insert-image data-dialog-primary>Insert image</button></div><button type="button" data-remove-image class="mosaic-editor-dialog-remove" hidden>Remove image</button></div>' +
-      '<div class="mosaic-editor-insert" data-panel="files" hidden><p class="mosaic-editor-dialog-intro">Add supporting documents, templates, or training materials.</p><label class="mosaic-editor-dialog-upload">' + icon('file') + '<span>Choose files</span><input type="file" data-files multiple accept=".pdf,.txt,.md,.markdown,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.webp,.gif" class="mosaic-editor-sr"></label><ul class="mosaic-editor-selected-files" data-selected-files hidden></ul><p class="mosaic-editor-file-hint">PDF, Office, text, Markdown, CSV and images · up to 5 MB per file</p><p class="mosaic-editor-dialog-error" role="alert" hidden></p><div class="mosaic-editor-dialog-actions"><button type="button" data-close>Cancel</button><button type="button" data-insert-files data-dialog-primary>Add files</button></div></div>' +
+      '<div class="mosaic-editor-insert" data-panel="files" hidden><div class="mosaic-editor-files-empty" data-files-empty><span class="mosaic-editor-files-empty-icon">' + icon('file') + '</span><h3>No files yet</h3><p>Add supporting documents, templates or training materials to your page.</p></div><label class="mosaic-editor-dialog-upload mosaic-editor-files-chooser">' + icon('file') + '<span>Choose files</span><input type="file" data-files multiple accept=".pdf,.txt,.md,.markdown,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.webp,.gif" class="mosaic-editor-sr"></label><ul class="mosaic-editor-selected-files" data-selected-files aria-label="Selected files" hidden></ul><div data-file-list aria-label="Page attachments"></div><p class="mosaic-editor-file-hint" data-attachment-status role="status" hidden></p><button type="button" data-more-attachments hidden>More attachments</button><p class="mosaic-editor-file-hint">PDF, Office, text, Markdown, CSV and images · up to 5 MB per file</p><p class="mosaic-editor-dialog-error" role="alert" hidden></p><div class="mosaic-editor-dialog-actions"><button type="button" data-close>Close</button><button type="button" data-insert-files data-dialog-primary hidden>Add files</button></div></div>' +
       '<div class="mosaic-editor-table-tools" hidden><span>Table</span><button type="button" data-table="edit">Edit table</button><button type="button" data-table="row">Add row</button><button type="button" data-table="column">Add column</button><button type="button" data-table="before">Text before</button><button type="button" data-table="after">Text after</button><button type="button" data-table="remove">Remove table</button></div>' +
       '<div class="mosaic-editor-body" role="textbox" aria-label="Article body" aria-multiline="true" contenteditable="false" spellcheck="true" data-placeholder="Write here, paste formatted text, or insert an image…"></div>' +
       '<div class="mosaic-editor-body-bottom"><span>Paste images or formatted text.</span><span data-word-count>0 words</span></div></div>' +
       '<article class="mosaic-editor-preview" tabindex="-1" aria-label="Article preview" hidden></article>' +
-      '<section class="mosaic-editor-attachments" aria-label="Attachments"><div class="mosaic-editor-attachments-heading"><h2>Attachments</h2><button type="button" data-add-files>' + icon('file') + 'Add files</button></div><div data-file-list></div><p class="mosaic-editor-file-hint" data-attachment-status role="status" hidden></p><button type="button" data-more-attachments hidden>More attachments</button><p class="mosaic-editor-file-hint">PDF, Office, text, Markdown, CSV and images · up to 5 MB per file</p></section></div></form>' +
-      '<div class="mosaic-editor-native-options"><a class="mosaic-editor-native" target="_blank" rel="noopener" title="Open Confluence for other native macros. Unsaved text is not transferred.">Open native editor<span class="mosaic-editor-sr"> in a new tab; unsaved text is not transferred.</span></a></div>';
+      '</div></form>';
     container.replaceChildren(section);
     var title = section.querySelector('.mosaic-editor-title'), summary = section.querySelector('.mosaic-editor-summary'), body = section.querySelector('.mosaic-editor-body'), status = section.querySelector('.mosaic-editor-status'), form = section.querySelector('form');
     var toolbar = section.querySelector('.mosaic-editor-toolbar'), publish = section.querySelector('.mosaic-editor-publish'), cancel = section.querySelector('.mosaic-editor-cancel'), previewButton = section.querySelector('.mosaic-editor-preview-toggle');
     var fileInput = section.querySelector('[data-files]'), imageInput = section.querySelector('[data-image-file]'), imageAlt = section.querySelector('[data-image-alt]');
     var panelParking = doc.createElement('div'); panelParking.hidden = true; panelParking.className = 'mosaic-editor-panel-parking';
     section.querySelectorAll('[data-panel]').forEach(function (panel) { panelParking.append(panel); }); section.append(panelParking);
-    section.querySelector('.mosaic-editor-native').href = nativeURL(config, page, parentId);
     title.value = source.title || ''; summary.value = source.summary || '';
     function on(node, event, listener) { node.addEventListener(event, listener, {signal:lifecycle.signal}); }
     function locked() { return !ready || busy || uncertain || destroyed; }
@@ -83,7 +81,7 @@
       toolbar.querySelectorAll('button').forEach(function (node) { node.disabled = disabled; });
       if (formatPicker) formatPicker.setDisabled(disabled);
       if (destinationPicker) destinationPicker.setDisabled(disabled || !!page);
-      section.querySelectorAll('.mosaic-editor-insert input,.mosaic-editor-insert button,.mosaic-editor-table-tools button,[data-add-files],[data-files],[data-remove-file],[data-insert-attachment]').forEach(function (node) { node.disabled = disabled; });
+      section.querySelectorAll('.mosaic-editor-insert input,.mosaic-editor-insert button,.mosaic-editor-table-tools button,[data-files],[data-remove-file],[data-insert-attachment]').forEach(function (node) { node.disabled = disabled; });
       section.querySelector('[data-more-attachments]').disabled = disabled || nativeBusy;
       publish.disabled = !ready || busy; cancel.disabled = busy; previewButton.disabled = !ready || busy;
       section.querySelector('.mosaic-editor-spinner').hidden = !busy;
@@ -112,7 +110,7 @@
       layer.className = 'mosaic-editor-dialog-backdrop'; layer.setAttribute('data-mosaic-owned',''); dialog.className = 'mosaic-editor-dialog'; dialog.setAttribute('role','dialog'); dialog.setAttribute('aria-modal','true'); dialog.setAttribute('aria-labelledby',titleId); dialog.tabIndex = -1;
       header.className = 'mosaic-editor-dialog-heading'; var label = doc.createElement('h2'), close = doc.createElement('button'); label.id = titleId; label.textContent = heading; close.type = 'button'; close.className = 'mosaic-editor-dialog-close'; close.setAttribute('aria-label','Close dialog'); close.innerHTML = icon('close'); header.append(label,close);
       panel.hidden = false; panel.querySelector('.mosaic-editor-dialog-error').hidden = true; dialog.append(header,panel); layer.append(dialog); section.append(layer);
-      var inert = [form,section.querySelector('.mosaic-editor-native-options')].map(function (node) { var entry = [node,!!node.inert]; node.inert = true; return entry; });
+      var inert = [form].map(function (node) { var entry = [node,!!node.inert]; node.inert = true; return entry; });
       activeDialog = {panel:panel,layer:layer,dialog:dialog,events:events,inert:inert,trigger:trigger || doc.activeElement,overflow:doc.body.style.overflow}; doc.body.style.overflow = 'hidden'; sizeDialog();
       var opener = section.querySelector('[data-open="' + kind + '"]'); if (opener) opener.setAttribute('aria-expanded','true');
       function focusables() { return Array.from(dialog.querySelectorAll('button:not(:disabled),a[href],input:not(:disabled),textarea:not(:disabled),[tabindex="0"]')).filter(function (node) { return !node.closest('[hidden]'); }); }
@@ -146,7 +144,7 @@
     function changed() { var count = body.textContent.trim().split(/\s+/).filter(Boolean).length; section.querySelector('[data-word-count]').textContent = count + (count === 1 ? ' word' : ' words'); rememberSelection(); if((files.length||renderedPending)&&referencedFiles().map(function(item){return item.id;}).join('|')!==renderedPending)renderFiles(); }
     function command(name, value) {
       if (locked()) return; restoreSelection();
-      if (typeof doc.execCommand !== 'function') { message('This browser cannot apply formatting here. Use the native editor.',true); return; }
+      if (typeof doc.execCommand !== 'function') { message('This browser cannot apply formatting here. Your text remains unchanged.',true); return; }
       doc.execCommand(name, false, value || null); changed();
     }
     function insertHTML(html) {
@@ -182,8 +180,11 @@
       return files.filter(function(item){return ids.has(item.id);});
     }
     function revoke(item) { if (item.objectURL) { win.URL.revokeObjectURL(item.objectURL); item.objectURL = ''; } }
+    function updateFilesEmpty() { section.querySelector('[data-files-empty]').hidden = !!(nativeFiles.length || referencedFiles().length || selectedFiles.length || nativeBusy || nativeError); }
     function renderFiles() {
       var list = section.querySelector('[data-file-list]'); list.replaceChildren();
+      function heading(text) { var title = doc.createElement('h3'); title.className = 'mosaic-editor-files-heading'; title.textContent = text; list.append(title); }
+      if (nativeFiles.length) heading('On this page');
       nativeFiles.forEach(function (item) {
         var row = doc.createElement('div'); row.className = 'mosaic-editor-file'; var label = doc.createElement('div'), name = doc.createElement('a'), state = doc.createElement('span'), insert = doc.createElement('button');
         var displayName = item.displayName || item.name;
@@ -191,28 +192,30 @@
         insert.type = 'button'; insert.dataset.insertAttachment = item.id; insert.textContent = IMAGE_TYPES.test(item.mediaType) ? 'Insert image' : 'Insert link'; insert.setAttribute('aria-label',insert.textContent + ': ' + displayName); insert.disabled = locked(); row.append(label,insert); list.append(row);
       });
       var visibleFiles=referencedFiles();renderedPending=visibleFiles.map(function(item){return item.id;}).join('|');
+      if (visibleFiles.length) heading('In this draft');
       visibleFiles.forEach(function (item) {
         var row = doc.createElement('div'); row.className = 'mosaic-editor-file'; var label = doc.createElement('div'), name = doc.createElement('strong'), state = doc.createElement('span'), remove = doc.createElement('button');
         name.textContent = item.file.name; state.textContent = Math.max(1,Math.round(item.file.size / 1024)) + ' KB · ' + (item.uploaded ? 'Uploaded' : 'Ready to upload'); label.append(name,state); remove.type = 'button'; remove.dataset.removeFile = item.id; remove.setAttribute('aria-label','Remove ' + item.file.name); remove.innerHTML = icon('close'); remove.disabled = locked();
         row.append(label,remove); list.append(row);
       });
+      updateFilesEmpty();
     }
     async function loadNativeFiles() {
       if (!page || typeof api.listAttachments !== 'function' || nativeBusy || destroyed) return;
       nativeBusy = true; nativeError = false; var feedback = section.querySelector('[data-attachment-status]'), more = section.querySelector('[data-more-attachments]');
-      feedback.hidden = false; feedback.textContent = 'Loading attachments…'; more.disabled = true;
+      feedback.hidden = false; feedback.textContent = 'Loading attachments…'; more.disabled = true; updateFilesEmpty();
       try {
         var result = await api.listAttachments({pageId:page.id,start:nativeStart,limit:100,signal:lifecycle.signal}); if (destroyed) return;
         result.results.forEach(function (item) { if (!nativeFiles.some(function (known) { return known.id === item.id; })) nativeFiles.push(item); });
         nativeMore = result.hasMore; nativeStart = result.nextStart; feedback.hidden = true; renderFiles();
       } catch (error) { if (destroyed) return; nativeError = true; feedback.textContent = error.message || 'Attachments could not be loaded.'; }
-      finally { nativeBusy = false; if (!destroyed) { more.hidden = !nativeMore && !nativeError; more.textContent = nativeError ? 'Retry attachments' : 'More attachments'; updateControls(); } }
+      finally { nativeBusy = false; if (!destroyed) { more.hidden = !nativeMore && !nativeError; more.textContent = nativeError ? 'Retry attachments' : 'More attachments'; updateFilesEmpty(); updateControls(); } }
     }
     function validFile(file, imageOnly) { return file && file.size > 0 && file.size <= 5 * 1024 * 1024 && FILE_EXTENSIONS.test(file.name || '') && (!imageOnly || IMAGE_TYPES.test(file.type || '')); }
     function removeUnusedPending(id) { if (id && !pendingNodes(body,id).length) { files = files.filter(function (item) { if (item.id !== id) return true; revoke(item); return false; }); renderFiles(); } }
     function stageFiles(incoming, imageOnly, description, replacement) {
       if (locked()) return 0;
-      if (typeof api.uploadAttachment !== 'function' || typeof root.MosaicAPI.createAttachmentHTML !== 'function') { message('Attachment uploads are unavailable. Reload the page or use the native editor.',true); return 0; }
+      if (typeof api.uploadAttachment !== 'function' || typeof root.MosaicAPI.createAttachmentHTML !== 'function') { message('Attachment uploads are unavailable. Reload the page to try again.',true); return 0; }
       var rejected = [], added = 0;
       Array.from(incoming || []).forEach(function (file) {
         var image = IMAGE_TYPES.test(file.type || '');
@@ -286,10 +289,10 @@
       section.querySelector(table ? '[data-edit-table] [data-table="row"]' : '[data-table-rows]').focus({preventScroll:true});
     }
     function showFilesPanel(incoming) {
-      if (!openDialog('files','Add attachments',section.querySelector('[data-add-files]'))) return;
-      selectedFiles = Array.from(incoming || []); fileInput.value = ''; showSelectedFiles();
+      if (!openDialog('files','Attachments',section.querySelector('[data-open="files"]'))) return;
+      selectedFiles = Array.from(incoming || []); fileInput.value = ''; showSelectedFiles(); renderFiles();
     }
-    function showSelectedFiles() { var list = section.querySelector('[data-selected-files]'); list.replaceChildren(); list.hidden = !selectedFiles.length; selectedFiles.forEach(function (file) { var item = doc.createElement('li'); item.textContent = file.name + ' · ' + Math.max(1,Math.round(file.size / 1024)) + ' KB'; list.append(item); }); }
+    function showSelectedFiles() { section.querySelector('[data-insert-files]').hidden = !selectedFiles.length; updateFilesEmpty(); var list = section.querySelector('[data-selected-files]'); list.replaceChildren(); list.hidden = !selectedFiles.length; selectedFiles.forEach(function (file) { var item = doc.createElement('li'); item.textContent = file.name + ' · ' + Math.max(1,Math.round(file.size / 1024)) + ' KB'; list.append(item); }); }
     function showLinkPanel(existing) {
       var text = existing ? existing.textContent : selection ? selection.toString() : '';
       if (!openDialog('link',existing ? 'Edit link' : 'Insert link',section.querySelector('[data-open="link"]'))) return;
@@ -312,11 +315,11 @@
         rememberSelection(); var kind = button.dataset.open;
         if (kind === 'image') showImagePanel(selectedElement('img'));
         else if (kind === 'table') showTablePanel(activeTable);
-        else if (kind === 'link') showLinkPanel(selectedElement('a')); return;
+        else if (kind === 'link') showLinkPanel(selectedElement('a'));
+        else if (kind === 'files') showFilesPanel(); return;
       }
       closePanels(); var action = button.dataset.action;
       if (action === 'expand') { setExpanded(!expanded); restoreSelection(); }
-      if (action === 'files') showFilesPanel();
       if (action === 'quote') command('formatBlock','blockquote');
       if (action === 'codeblock') command('formatBlock','pre');
       if (action === 'divider') insertHTML('<hr /><p><br /></p>');
@@ -374,7 +377,7 @@
       var existing = selectedImage, file = selectedImageFile, alt = imageAlt.value.trim(), urlValue = section.querySelector('[data-image-url]').value.trim(), sourceURL = urlValue ? imageURL(urlValue) : '';
       if (file) {
         if (!validFile(file,true)) { message('Choose a PNG, JPG, WebP or GIF image up to 5 MB.',true); return; }
-        if (typeof api.uploadAttachment !== 'function') { message('Attachment uploads are unavailable. Reload the page or use the native editor.',true); return; }
+        if (typeof api.uploadAttachment !== 'function') { message('Attachment uploads are unavailable. Reload the page to try again.',true); return; }
         closePanels(false); stageFiles([file],true,alt,existing); return;
       }
       if (urlValue && !sourceURL) { message('Use an image attached to this page, or choose an image file to upload.',true); return; }
@@ -392,15 +395,14 @@
       removeUnusedPending(id); closePanels(false); changed(); restoreSelection();
     });
     on(body,'click',function (event) { if (!locked() && event.target.tagName === 'IMG') { rememberSelection(); showImagePanel(event.target); } else if (event.target.closest('a')) { event.preventDefault(); if (!locked()) { rememberSelection(); showLinkPanel(event.target.closest('a')); } } });
-    on(section.querySelector('[data-add-files]'),'click',function () { if (!locked()) { rememberSelection(); showFilesPanel(); } });
     on(fileInput,'change',function () { selectedFiles = Array.from(fileInput.files); showSelectedFiles(); });
-    on(section.querySelector('[data-insert-files]'),'click',function () { if (locked()) return; if (!selectedFiles.length) { message('Choose files to attach.',true); return; } if (selectedFiles.some(function (file) { return !validFile(file,false); })) { message('Choose supported files up to 5 MB each.',true); return; } if (typeof api.uploadAttachment !== 'function') { message('Attachment uploads are unavailable. Reload the page or use the native editor.',true); return; } var incoming = selectedFiles.slice(); closePanels(false); stageFiles(incoming,false); });
+    on(section.querySelector('[data-insert-files]'),'click',function () { if (locked()) return; if (!selectedFiles.length) { message('Choose files to attach.',true); return; } if (selectedFiles.some(function (file) { return !validFile(file,false); })) { message('Choose supported files up to 5 MB each.',true); return; } if (typeof api.uploadAttachment !== 'function') { message('Attachment uploads are unavailable. Reload the page to try again.',true); return; } var incoming = selectedFiles.slice(); closePanels(false); stageFiles(incoming,false); });
     on(section.querySelector('[data-file-list]'),'click',function (event) {
       var insert = event.target.closest('[data-insert-attachment]');
-      if (insert && !locked()) { var attachment = nativeFiles.find(function (item) { return item.id === insert.dataset.insertAttachment; }); if (attachment) insertHTML('<p>' + root.MosaicAPI.createAttachmentHTML(attachment,{image:IMAGE_TYPES.test(attachment.mediaType)}) + '</p><p><br /></p>'); return; }
+      if (insert && !locked()) { var attachment = nativeFiles.find(function (item) { return item.id === insert.dataset.insertAttachment; }); if (attachment) { closePanels(false); insertHTML('<p>' + root.MosaicAPI.createAttachmentHTML(attachment,{image:IMAGE_TYPES.test(attachment.mediaType)}) + '</p><p><br /></p>'); } return; }
       var button = event.target.closest('[data-remove-file]'); if (!button || locked()) return;
       var item = files.find(function (value) { return value.id === button.dataset.removeFile; }); if (!item) return;
-      pendingNodes(body,item.id).forEach(function (node) { node.remove(); }); revoke(item); files = files.filter(function (value) { return value !== item; }); renderFiles(); changed();
+      pendingNodes(body,item.id).forEach(function (node) { node.remove(); }); revoke(item); files = files.filter(function (value) { return value !== item; }); renderFiles(); changed(); fileInput.focus({preventScroll:true});
     });
     on(section.querySelector('[data-more-attachments]'),'click',function () { if (!locked()) loadNativeFiles(); });
     on(body,'paste',function (event) {
@@ -428,7 +430,7 @@
         fillPreview(content);
         preview.append(heading); if (summary.value) preview.append(intro); preview.append(content);
       }
-      section.querySelector('.mosaic-editor-fields').hidden = previewing; section.querySelector('.mosaic-editor-content-label').hidden = previewing; section.querySelector('.mosaic-editor-writing').hidden = previewing; section.querySelector('.mosaic-editor-attachments').hidden = previewing;
+      section.querySelector('.mosaic-editor-fields').hidden = previewing; section.querySelector('.mosaic-editor-content-label').hidden = previewing; section.querySelector('.mosaic-editor-writing').hidden = previewing;
       preview.hidden = !previewing; previewButton.textContent = previewing ? 'Edit' : 'Preview'; previewButton.setAttribute('aria-pressed',String(previewing)); if (!previewing) restoreSelection(); else preview.focus();
     });
     on(cancel,'click',function () { if (!busy && typeof options.onCancel === 'function') options.onCancel(); });
@@ -440,7 +442,7 @@
         toUpload = referencedFiles();
         html = serializableBody(true);
         if (!toUpload.length && !resumingAttachments) { if (html || !summary.value.trim()) root.MosaicAPI.validateHTML(html); }
-        else if (toUpload.length && typeof api.uploadAttachment !== 'function') throw new Error('Attachment uploads are unavailable. Use the native editor.');
+        else if (toUpload.length && typeof api.uploadAttachment !== 'function') throw new Error('Attachment uploads are unavailable. Reload the page to try again.');
       } catch (error) { message(error.message,true); return; }
       busy = true; updateControls(); message(uncertain ? 'Checking the original publication…' : 'Publishing to Confluence…');
       var published, beganWithPage = !!page;
@@ -448,7 +450,6 @@
         if (toUpload.length && !page) {
           page = await api.publish({title:title.value.trim(),summary:summary.value.trim(),html:html,parentId:parentId,attachmentsPending:true});
           if (destroyed) return; uncertain = false; uploadIncomplete = true;
-          section.querySelector('.mosaic-editor-native').href = nativeURL(config,page);
         }
         for (var i = 0; i < toUpload.length; i++) {
           var item = toUpload[i]; if (item.uploaded) continue;
@@ -461,7 +462,6 @@
         if (destroyed) return;
         if (resumingAttachments) {
           page = published; published = null; pending = null; uncertain = false; uploadIncomplete = true;
-          section.querySelector('.mosaic-editor-native').href = nativeURL(config,page);
           message('The original page is confirmed. Choose its files again to finish publishing; selected files are kept only in the current editor view.');
           return;
         }
@@ -469,7 +469,7 @@
         body.innerHTML = sanitizeHTML(published.editorHtml == null ? html : published.editorHtml,purifier,doc);
         files.forEach(revoke); files = []; renderFiles(); selection = null; activeTable = null; section.querySelector('.mosaic-editor-table-tools').hidden = true;
         baseline = {title:title.value,summary:summary.value,html:body.innerHTML,parentId:parentId};
-        section.querySelector('.mosaic-editor-native').href = nativeURL(config,published); message('Article published.'); changed();
+        message('Article published.'); changed();
       } catch (error) {
         if (destroyed) return;
         uncertain = !!error.uncertain || error.code === 'PENDING_PUBLICATION';
@@ -481,17 +481,17 @@
     });
     (async function () {
       try {
-        if (page && page.hasUnsupportedContent) { message('This article contains native content that this editor cannot safely change. Open the native editor to preserve it.'); section.querySelector('.mosaic-editor-main').hidden = true; publish.hidden = true; previewButton.hidden = true; return; }
-        if (!root.MosaicPopover || typeof root.MosaicPopover.mount !== 'function') throw new Error('The editor controls could not load. Reload the page or use the native editor.');
+        if (page && page.hasUnsupportedContent) { message('This page contains native content that this editor cannot safely change. Your content has not been modified.'); section.querySelector('.mosaic-editor-main').hidden = true; publish.hidden = true; previewButton.hidden = true; return; }
+        if (!root.MosaicPopover || typeof root.MosaicPopover.mount !== 'function') throw new Error('The editor controls could not load. Reload the page to try again.');
         formatPicker = root.MosaicPopover.mount(section.querySelector('[data-format]'), {label:'Paragraph style',value:'p',options:FORMATS,retainFocus:false,onChange:function (value) { if (!FORMATS.some(function (item) { return item.value === value; })) return; closePanels(); command('formatBlock',value); }}); popovers.push(formatPicker);
         if (!page && !pending) {
           destinationPicker = root.MosaicPopover.mount(section.querySelector('[data-destination]'), {label:'Publish in',value:parentId,options:[{value:String(config.pages.insights),label:'Insights'},{value:String(config.pages.resources),label:'Resources'}],onChange:function (value) {
             if (locked() || page || ![config.pages.insights,config.pages.resources].map(String).includes(String(value))) { destinationPicker.setValue(parentId); return; }
-            parentId = String(value); collection = parentId === String(config.pages.resources) ? 'Resources' : 'Insights'; section.querySelector('.mosaic-editor-eyebrow').textContent = 'Mosaic · ' + collection; section.querySelector('.mosaic-editor-native').href = nativeURL(config,null,parentId);
+            parentId = String(value); collection = parentId === String(config.pages.resources) ? 'Resources' : 'Insights'; section.querySelector('.mosaic-editor-eyebrow').textContent = 'Mosaic · ' + collection;
           }}); popovers.push(destinationPicker);
         }
         updateControls();
-        if (!root.MosaicLibraries || typeof root.MosaicLibraries.load !== 'function') throw new Error('The content sanitizer is unavailable. Use the native Confluence editor.');
+        if (!root.MosaicLibraries || typeof root.MosaicLibraries.load !== 'function') throw new Error('The content sanitizer is unavailable. Reload the page to try again.');
         var library = await root.MosaicLibraries.load('dompurify'); if (destroyed) return; purifier = root.DOMPurify || library;
         body.innerHTML = sanitizeHTML(source.editorHtml == null ? source.html || '<p><br /></p>' : source.editorHtml,purifier,doc);
         baseline = {title:title.value,summary:summary.value,html:body.innerHTML,parentId:parentId}; ready = true; uncertain = !!pending; changed();
