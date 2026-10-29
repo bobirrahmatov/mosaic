@@ -34,7 +34,7 @@
     if (!container || !options.api || !options.config) throw new Error('Provide an editor container, Mosaic API and configuration.');
     var doc = container.ownerDocument, win = doc.defaultView, api = options.api, config = options.config, page = options.page || null;
     var lifecycle = new win.AbortController(), destroyed = false, busy = false, uncertain = false, ready = false, purifier = null, selection = null, baseline = null, popovers = [], formatPicker = null, destinationPicker = null;
-    var files = [], nativeFiles = [], nativeMore = false, nativeStart = 0, nativeBusy = false, nativeError = false, sequence = 0, expanded = false, previewing = false, savedOverflow = null, selectedImage = null, selectedLink = null, selectedImageFile = null, selectedFiles = [], imagePreviewURL = '', activeDialog = null, dialogSequence = 0, activeTable = null, dialogTable = null, internalTextDrag = false, uploadIncomplete = false;
+    var files = [], renderedPending = '', nativeFiles = [], nativeMore = false, nativeStart = 0, nativeBusy = false, nativeError = false, sequence = 0, expanded = false, previewing = false, savedOverflow = null, selectedImage = null, selectedLink = null, selectedImageFile = null, selectedFiles = [], imagePreviewURL = '', activeDialog = null, dialogSequence = 0, activeTable = null, dialogTable = null, internalTextDrag = false, uploadIncomplete = false;
     var pending = !page && typeof api.getPendingPublication === 'function' ? api.getPendingPublication() : null;
     var source = page || pending || {title:'',html:''};
     var parentId = String(source.parentId || options.parentId || config.pages.insights);
@@ -143,7 +143,7 @@
       if (selection && body.contains(selection.commonAncestorContainer)) { current.removeAllRanges(); current.addRange(selection); }
       else { var range = doc.createRange(); range.selectNodeContents(body); range.collapse(false); current.removeAllRanges(); current.addRange(range); }
     }
-    function changed() { var count = body.textContent.trim().split(/\s+/).filter(Boolean).length; section.querySelector('[data-word-count]').textContent = count + (count === 1 ? ' word' : ' words'); rememberSelection(); }
+    function changed() { var count = body.textContent.trim().split(/\s+/).filter(Boolean).length; section.querySelector('[data-word-count]').textContent = count + (count === 1 ? ' word' : ' words'); rememberSelection(); if((files.length||renderedPending)&&referencedFiles().map(function(item){return item.id;}).join('|')!==renderedPending)renderFiles(); }
     function command(name, value) {
       if (locked()) return; restoreSelection();
       if (typeof doc.execCommand !== 'function') { message('This browser cannot apply formatting here. Use the native editor.',true); return; }
@@ -175,6 +175,12 @@
     on(section.querySelector('.mosaic-editor-focus-exit'),'click',function () { setExpanded(false); section.querySelector('[data-action="expand"]').focus(); });
     on(section,'keydown',function (event) { if (event.key === 'Escape' && !activeDialog && expanded) { event.preventDefault(); setExpanded(false); } });
     function pendingNodes(box, id) { return Array.from(box.querySelectorAll('[data-mosaic-pending]')).filter(function (node) { return node.getAttribute('data-mosaic-pending') === id; }); }
+    function referencedFiles() {
+      var ids=new Set(Array.from(body.querySelectorAll('[data-mosaic-pending]'),function(node){return node.getAttribute('data-mosaic-pending');}));
+      // Keep removed local records until publication/teardown so native Undo can
+      // restore a reference, but never upload a file absent from the current body.
+      return files.filter(function(item){return ids.has(item.id);});
+    }
     function revoke(item) { if (item.objectURL) { win.URL.revokeObjectURL(item.objectURL); item.objectURL = ''; } }
     function renderFiles() {
       var list = section.querySelector('[data-file-list]'); list.replaceChildren();
@@ -184,7 +190,8 @@
         name.textContent = displayName; name.href = item.url; name.target = '_blank'; name.rel = 'noopener'; state.textContent = Math.max(1,Math.round(item.size / 1024)) + ' KB'; label.append(name,state);
         insert.type = 'button'; insert.dataset.insertAttachment = item.id; insert.textContent = IMAGE_TYPES.test(item.mediaType) ? 'Insert image' : 'Insert link'; insert.setAttribute('aria-label',insert.textContent + ': ' + displayName); insert.disabled = locked(); row.append(label,insert); list.append(row);
       });
-      files.forEach(function (item) {
+      var visibleFiles=referencedFiles();renderedPending=visibleFiles.map(function(item){return item.id;}).join('|');
+      visibleFiles.forEach(function (item) {
         var row = doc.createElement('div'); row.className = 'mosaic-editor-file'; var label = doc.createElement('div'), name = doc.createElement('strong'), state = doc.createElement('span'), remove = doc.createElement('button');
         name.textContent = item.file.name; state.textContent = Math.max(1,Math.round(item.file.size / 1024)) + ' KB · ' + (item.uploaded ? 'Uploaded' : 'Ready to upload'); label.append(name,state); remove.type = 'button'; remove.dataset.removeFile = item.id; remove.setAttribute('aria-label','Remove ' + item.file.name); remove.innerHTML = icon('close'); remove.disabled = locked();
         row.append(label,remove); list.append(row);
@@ -430,7 +437,7 @@
       var html, toUpload, resumingAttachments = !!(pending && pending.attachmentsPending && !page && uncertain);
       try {
         if (!title.value.trim()) throw new Error('Enter an article title.');
-        toUpload = files.slice();
+        toUpload = referencedFiles();
         html = serializableBody(true);
         if (!toUpload.length && !resumingAttachments) { if (html || !summary.value.trim()) root.MosaicAPI.validateHTML(html); }
         else if (toUpload.length && typeof api.uploadAttachment !== 'function') throw new Error('Attachment uploads are unavailable. Use the native editor.');
