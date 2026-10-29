@@ -45,6 +45,7 @@
 /* The body grows with the document. Only the page or expanded main surface scrolls. */
 #mosaic .mosaic-editor-body{width:100%;height:auto;min-height:460px;max-height:none;overflow:visible;padding:25px 26px;color:var(--editor-text);font-size:15px;line-height:1.85;overflow-wrap:anywhere;outline-offset:-3px}
 #mosaic .mosaic-editor-body:empty:before{content:attr(data-placeholder);color:var(--editor-muted);pointer-events:none}
+#mosaic .mosaic-editor-body.is-file-drop{background:var(--mosaic-theme-selected,#e6eefb);outline:2px dashed var(--mosaic-theme-focus,#255be3);outline-offset:-5px}
 #mosaic .mosaic-editor-body h2,#mosaic .mosaic-editor-preview h2{font:400 24px/1.4 "Citi-Sans-Display",Arial,sans-serif;margin:10px 0 17px;color:var(--editor-text)}
 #mosaic .mosaic-editor-body h3,#mosaic .mosaic-editor-preview h3{font:400 20px/1.4 "Citi-Sans-Display",Arial,sans-serif;margin:18px 0 12px;color:var(--editor-text)}
 #mosaic .mosaic-editor-body h4{font-size:17px;line-height:1.5;margin:18px 0 12px}

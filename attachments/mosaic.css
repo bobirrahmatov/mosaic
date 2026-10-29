@@ -388,36 +388,24 @@ body[data-mosaic-host=active] #mosaic{width:100%!important;max-width:none!import
 
 @media(max-width:720px){body[data-mosaic-host=active][data-mosaic-native-page=true] :is(#main-content,[data-mosaic-native-surface=true])[data-mosaic-native-surface=true]{border-radius:18px;margin-block:16px 28px!important}body[data-mosaic-native-page=true] [data-mosaic-native-content=true]{font-size:16px}}
 @media print{body[data-mosaic-host=active][data-mosaic-native-page=true] :is(#main-content,[data-mosaic-native-surface=true])[data-mosaic-native-surface=true]{margin:0!important;padding:0!important;border:0!important;border-radius:0!important;box-shadow:none!important;background:#fff!important}body[data-mosaic-native-page=true] [data-mosaic-native-content=true]{font-size:11pt;line-height:1.55}body[data-mosaic-native-page=true] .mosaic-native-document-heading{break-after:avoid}}
-/* Editorial chrome is outside the native/export body. Use the available column
- * for text and a compact details card, then stack naturally on smaller screens. */
-body[data-mosaic-host=active][data-mosaic-native-page=true] [data-mosaic-native-editorial=true]{display:grid!important;grid-template-columns:minmax(0,1fr) minmax(230px,280px);gap:0 clamp(28px,4vw,64px);align-items:start}
-body[data-mosaic-native-page=true] [data-mosaic-native-editorial=true]>.mosaic-native-results-link{grid-column:1/-1;margin:0 0 24px}
-body[data-mosaic-native-page=true] [data-mosaic-native-editorial=true]>[data-mosaic-native-content=true]{grid-column:1}
-body[data-mosaic-native-page=true] [data-mosaic-native-editorial=true]>.mosaic-native-document-heading{grid-column:1/-1;margin-bottom:48px!important;text-align:center}
+/* Editorial chrome stays outside the native/export body. Authorship lives
+ * beneath the title; the article uses the whole available content column. */
+body[data-mosaic-host=active][data-mosaic-native-page=true] [data-mosaic-native-editorial=true]{display:block!important}
+body[data-mosaic-native-page=true] [data-mosaic-native-editorial=true]>.mosaic-native-results-link{margin:0 0 24px}
+body[data-mosaic-native-page=true] [data-mosaic-native-editorial=true]>.mosaic-native-document-heading{margin-bottom:48px!important;text-align:center}
 body[data-mosaic-native-page=true] [data-mosaic-native-editorial=true]>.mosaic-native-document-heading>h1{max-width:1100px;margin:0 auto!important;font-size:clamp(34px,4.4vw,64px);line-height:1.18}
 body[data-mosaic-native-page=true] .mosaic-native-breadcrumb{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;margin-bottom:48px;text-align:left;font:14px/1.5 'Citi-Sans-Text',Arial,sans-serif}
 body[data-mosaic-native-page=true] .mosaic-native-breadcrumb>*+*::before{content:'/';display:inline-block;margin-right:16px;color:var(--mosaic-theme-muted)}
 body[data-mosaic-native-page=true] .mosaic-native-breadcrumb a{color:var(--mosaic-theme-link);text-decoration:none}
 body[data-mosaic-native-page=true] .mosaic-native-category{margin:0 0 24px!important;color:var(--mosaic-theme-link);text-transform:uppercase;letter-spacing:.12em;font-size:13px;font-weight:600}
-body[data-mosaic-native-page=true] .mosaic-native-byline{display:flex;justify-content:center;flex-wrap:wrap;gap:8px 16px;margin:26px 0 0!important;color:var(--mosaic-theme-muted);font-size:14px}
+body[data-mosaic-native-page=true] .mosaic-native-byline{display:flex;justify-content:center;flex-wrap:wrap;gap:8px 16px;margin:26px auto 0!important;max-width:1100px;color:var(--mosaic-theme-muted);font:14px/1.6 'Citi-Sans-Text',Arial,sans-serif;overflow-wrap:anywhere}
+body[data-mosaic-native-page=true] .mosaic-native-byline>span{min-width:0;max-width:100%}
 body[data-mosaic-native-page=true] .mosaic-native-byline>span+span::before{content:'·';margin-right:16px}
 body[data-mosaic-native-page=true] .mosaic-native-document-heading>img.mosaic-native-cover{display:block;width:100%;height:clamp(180px,28vw,420px);object-fit:cover;border-radius:20px;margin-top:40px}
 body[data-mosaic-native-page=true] .mosaic-native-document-heading>img.mosaic-native-cover[hidden]{display:none}
-body[data-mosaic-native-page=true] .mosaic-native-article-details{box-sizing:border-box;min-width:0;padding:28px;border-radius:22px;background:var(--mosaic-theme-subtle,#f0f4f8);color:var(--mosaic-theme-text);font:15px/1.6 'Citi-Sans-Text',Arial,sans-serif}
-body[data-mosaic-native-page=true] .mosaic-native-article-details h2{font-family:'Citi-Sans-Display','Citi-Sans-Text',Arial,sans-serif;font-weight:400;font-size:24px!important;margin:0 0 24px!important}
-body[data-mosaic-native-page=true] .mosaic-native-article-status{display:flex;align-items:center;justify-content:space-between;gap:12px;color:var(--mosaic-theme-muted);font-size:13px}
-body[data-mosaic-native-page=true] .mosaic-native-published{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:7px;background:var(--mosaic-theme-surface);color:var(--mosaic-theme-text)}
-body[data-mosaic-native-page=true] .mosaic-native-published::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor}
-body[data-mosaic-native-page=true] .mosaic-native-article-details dl{margin:24px 0}
-body[data-mosaic-native-page=true] .mosaic-native-article-details dt{margin:20px 0 4px;color:var(--mosaic-theme-muted);font-size:13px;font-weight:400}
-body[data-mosaic-native-page=true] .mosaic-native-article-details dd{margin:0;overflow-wrap:anywhere}
-body[data-mosaic-native-page=true] .mosaic-native-history{color:var(--mosaic-theme-link,#255be3);display:flex;justify-content:space-between;gap:12px;text-decoration:none}
-body[data-mosaic-native-page=true] .mosaic-native-history::after{content:'→'}
-@media(max-width:1000px){body[data-mosaic-host=active][data-mosaic-native-page=true] [data-mosaic-native-editorial=true]{grid-template-columns:minmax(0,1fr);gap:32px}body[data-mosaic-native-page=true] [data-mosaic-native-editorial=true]>.mosaic-native-document-heading{margin-bottom:0!important}body[data-mosaic-native-page=true] .mosaic-native-article-details dl{display:grid;grid-template-columns:140px minmax(0,1fr);gap:12px 18px}body[data-mosaic-native-page=true] .mosaic-native-article-details :is(dt,dd){margin:0}}
-@media(max-width:720px){body[data-mosaic-native-page=true] .mosaic-native-breadcrumb{margin-bottom:30px}body[data-mosaic-native-page=true] .mosaic-native-document-heading>img.mosaic-native-cover{margin-top:28px;border-radius:14px}body[data-mosaic-native-page=true] .mosaic-native-article-details{padding:22px}body[data-mosaic-native-page=true] .mosaic-native-article-details dl{grid-template-columns:minmax(0,1fr);gap:4px}body[data-mosaic-native-page=true] .mosaic-native-article-details dd{margin-bottom:12px}}
-@media print{body[data-mosaic-host=active][data-mosaic-native-page=true] [data-mosaic-native-editorial=true]{display:block!important}.mosaic-native-breadcrumb,.mosaic-native-article-details,.mosaic-native-cover{display:none!important}}
-
-body[data-mosaic-native-page=true] :is(.mosaic-native-breadcrumb,.mosaic-native-article-details) a:focus-visible{outline:2px solid var(--mosaic-theme-focus,#255be3);outline-offset:4px;border-radius:3px}
+body[data-mosaic-native-page=true] .mosaic-native-breadcrumb a:focus-visible{outline:2px solid var(--mosaic-theme-focus,#255be3);outline-offset:4px;border-radius:3px}
+@media(max-width:720px){body[data-mosaic-native-page=true] .mosaic-native-breadcrumb{margin-bottom:30px}body[data-mosaic-native-page=true] .mosaic-native-document-heading>img.mosaic-native-cover{margin-top:28px;border-radius:14px}body[data-mosaic-native-page=true] [data-mosaic-native-editorial=true]>.mosaic-native-document-heading{margin-bottom:32px!important}}
+@media print{.mosaic-native-breadcrumb,.mosaic-native-cover{display:none!important}}
 
 /* Native article actions share Mosaic's palette; files retain a print palette. */
 :is(#mosaic,body) .mosaic-export-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font:14px/1.4 "Citi-Sans-Text",Arial,sans-serif}

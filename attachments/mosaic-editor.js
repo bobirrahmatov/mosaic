@@ -8,6 +8,27 @@
   var FORMATS = [{value:'p',label:'Normal text'},{value:'h2',label:'Heading 2'},{value:'h3',label:'Heading 3'},{value:'h4',label:'Heading 4'}];
   var IMAGE_TYPES = /^(?:image\/png|image\/jpeg|image\/webp|image\/gif)$/;
   var FILE_EXTENSIONS = /\.(?:pdf|txt|md|markdown|csv|doc|docx|xls|xlsx|ppt|pptx|png|jpe?g|webp|gif)$/i;
+  var IMAGE_EXTENSIONS = {png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',gif:'image/gif'};
+  var FILE_MIME = {pdf:['application/pdf'],txt:['text/plain'],md:['text/plain','text/markdown'],markdown:['text/plain','text/markdown'],csv:['text/plain','text/csv','application/vnd.ms-excel'],doc:['application/msword'],docx:['application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/zip'],xls:['application/vnd.ms-excel'],xlsx:['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','application/zip'],ppt:['application/vnd.ms-powerpoint'],pptx:['application/vnd.openxmlformats-officedocument.presentationml.presentation','application/zip']};
+  // Only live editor bodies registered here may opt out of the space-wide guard.
+  // Authored markup cannot opt in by copying a class or data attribute.
+  var dropTargets = new WeakMap(), handledDrops = new WeakSet(), dropHighlights = new Set();
+  function clearDropHighlights() { dropHighlights.forEach(function (body) { body.classList.remove('is-file-drop'); }); dropHighlights.clear(); }
+  function dropTarget(event) {
+    if (!event || !['dragenter','dragover','drop'].includes(event.type)) return null;
+    var node = event.target;
+    while (node && node.nodeType) { var registration = dropTargets.get(node); if (registration) return registration; node = node.parentNode; }
+    return null;
+  }
+  function acceptsFileDrop(event) { var target = dropTarget(event); return !!target && carriesFiles(event.dataTransfer) && target.accepts(); }
+  function handleFileDrop(event) {
+    // The window guard calls this even for rejected outside targets. Clear the
+    // previous body's hover here because its capture block prevents bubbling.
+    if (!acceptsFileDrop(event)) { clearDropHighlights(); return false; }
+    if (handledDrops.has(event)) return true;
+    clearDropHighlights(); handledDrops.add(event); dropTarget(event).handle(event); return true;
+  }
+  function carriesFiles(transfer) { return !!transfer && (!!transfer.files?.length || Array.from(transfer.types || []).includes('Files') || Array.from(transfer.items || []).some(function (item) { return item.kind === 'file'; })); }
   var ICONS = {
     bold:'M6 4h7a4 4 0 0 1 0 8H6zm0 8h8a4 4 0 0 1 0 8H6z',italic:'M10 4h10M4 20h10M15 4 9 20',underline:'M6 4v7a6 6 0 0 0 12 0V4M4 21h16',strike:'M18 6c-1-2-3-3-6-3-4 0-6 2-6 5 0 2 2 3 6 4m-7 5c1 3 4 4 7 4 4 0 6-2 6-5M3 12h18',link:'M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-2 2M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l2-2',quote:'M4 7h6v6H4c0 4 2 5 4 5M14 7h6v6h-6c0 4 2 5 4 5',code:'m8 8-5 4 5 4m8-8 5 4-5 4M14 5l-4 14',image:'M3 3h18v18H3zM3 17l6-6 4 4 3-3 5 5M16 7h.01',file:'M14 3H5v18h14V8zM14 3v5h5M8 13h8M8 17h6',list:'M9 6h12M9 12h12M9 18h12M3 6h.01M3 12h.01M3 18h.01',ordered:'M10 6h11M10 12h11M10 18h11M3 3h2v6M3 9h4M3 14c0-2 4-2 4 0 0 1-4 4-4 6h4',codeblock:'M7 3H3v18h4M17 3h4v18h-4m-7-7-3-2 3-2m4 4 3-2-3-2',table:'M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18',divider:'M3 12h18',clear:'m5 4 14 16M8 4h12M14 4l-4 16M5 20h9M3 3l18 18',undo:'M3 10h12a6 6 0 0 1 0 12M3 10l5-5M3 10l5 5',redo:'M21 10H9a6 6 0 0 0 0 12M21 10l-5-5M21 10l-5 5',expand:'M9 3H3v6M15 3h6v6M3 15v6h6M21 15v6h-6',close:'m6 6 12 12M18 6 6 18',arrow:'M4 12h16m-6-6 6 6-6 6',eye:'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12m7 0a3 3 0 1 0 6 0 3 3 0 0 0-6 0'
   };
@@ -56,8 +77,8 @@
       '<div class="mosaic-editor-insert" data-panel="image" hidden><p class="mosaic-editor-dialog-intro">Add an image where your cursor is. Its description is included for readers using assistive technology.</p><label class="mosaic-editor-dialog-upload">' + icon('image') + '<span data-image-choice>Choose PNG, JPG, WebP, or GIF</span><input type="file" data-image-file accept="image/png,image/jpeg,image/webp,image/gif" class="mosaic-editor-sr"></label><img data-image-preview class="mosaic-editor-dialog-image-preview" alt="" hidden><label>Or use an image URL<input type="url" data-image-url placeholder="/confluence/download/attachments/…" autocomplete="off"></label><label>Image description<input type="text" data-image-alt maxlength="500" placeholder="Describe what this image shows"></label><p class="mosaic-editor-file-hint">Up to 5 MB · images are saved as native page attachments.</p><p class="mosaic-editor-dialog-error" role="alert" hidden></p><div class="mosaic-editor-dialog-actions"><button type="button" data-close>Cancel</button><button type="button" data-insert-image data-dialog-primary>Insert image</button></div><button type="button" data-remove-image class="mosaic-editor-dialog-remove" hidden>Remove image</button></div>' +
       '<div class="mosaic-editor-insert" data-panel="files" hidden><div class="mosaic-editor-files-empty" data-files-empty><span class="mosaic-editor-files-empty-icon">' + icon('file') + '</span><h3>No files yet</h3><p>Add supporting documents, templates or training materials to your page.</p></div><label class="mosaic-editor-dialog-upload mosaic-editor-files-chooser">' + icon('file') + '<span>Choose files</span><input type="file" data-files multiple accept=".pdf,.txt,.md,.markdown,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.webp,.gif" class="mosaic-editor-sr"></label><ul class="mosaic-editor-selected-files" data-selected-files aria-label="Selected files" hidden></ul><div data-file-list aria-label="Page attachments"></div><p class="mosaic-editor-file-hint" data-attachment-status role="status" hidden></p><button type="button" data-more-attachments hidden>More attachments</button><p class="mosaic-editor-file-hint">PDF, Office, text, Markdown, CSV and images · up to 5 MB per file</p><p class="mosaic-editor-dialog-error" role="alert" hidden></p><div class="mosaic-editor-dialog-actions"><button type="button" data-close>Close</button><button type="button" data-insert-files data-dialog-primary hidden>Add files</button></div></div>' +
       '<div class="mosaic-editor-table-tools" hidden><span>Table</span><button type="button" data-table="edit">Edit table</button><button type="button" data-table="row">Add row</button><button type="button" data-table="column">Add column</button><button type="button" data-table="before">Text before</button><button type="button" data-table="after">Text after</button><button type="button" data-table="remove">Remove table</button></div>' +
-      '<div class="mosaic-editor-body" role="textbox" aria-label="Article body" aria-multiline="true" contenteditable="false" spellcheck="true" data-placeholder="Write here, paste formatted text, or insert an image…"></div>' +
-      '<div class="mosaic-editor-body-bottom"><span>Paste images or formatted text.</span><span data-word-count>0 words</span></div></div>' +
+      '<div class="mosaic-editor-body" role="textbox" aria-label="Article body" aria-multiline="true" contenteditable="false" spellcheck="true" data-placeholder="Write here, paste formatted text, or drop images and files…"></div>' +
+      '<div class="mosaic-editor-body-bottom"><span>Drop images or files here. Paste images or formatted text. Up to 5 MB per file.</span><span data-word-count>0 words</span></div></div>' +
       '<article class="mosaic-editor-preview" tabindex="-1" aria-label="Article preview" hidden></article>' +
       '</div></form>';
     container.replaceChildren(section);
@@ -69,6 +90,9 @@
     title.value = source.title || ''; summary.value = source.summary || '';
     function on(node, event, listener) { node.addEventListener(event, listener, {signal:lifecycle.signal}); }
     function locked() { return !ready || busy || uncertain || destroyed; }
+    function canDropFiles() { return !locked() && !previewing && !activeDialog && body.isConnected && section.contains(body) && body.contentEditable === 'true'; }
+    function clearFileDrop() { body.classList.remove('is-file-drop'); dropHighlights.delete(body); }
+    dropTargets.set(body,{accepts:canDropFiles,handle:handleFilesGesture});
     function dirty() { return busy || uncertain || uploadIncomplete || !!(baseline && (title.value !== baseline.title || summary.value !== baseline.summary || body.innerHTML !== baseline.html || parentId !== baseline.parentId)); }
     on(win, 'beforeunload', function (event) { if (dirty()) { event.preventDefault(); event.returnValue = ''; } });
     function message(text, error) {
@@ -77,6 +101,7 @@
     }
     function updateControls() {
       var disabled = locked();
+      if (disabled) clearFileDrop();
       title.disabled = disabled; summary.disabled = disabled; body.contentEditable = disabled ? 'false' : 'true';
       toolbar.querySelectorAll('button').forEach(function (node) { node.disabled = disabled; });
       if (formatPicker) formatPicker.setDisabled(disabled);
@@ -105,7 +130,7 @@
       layer.style.top = (viewport ? viewport.offsetTop : 0) + 'px'; layer.style.left = (viewport ? viewport.offsetLeft : 0) + 'px'; layer.style.width = (viewport ? viewport.width : win.innerWidth) + 'px'; layer.style.height = (viewport ? viewport.height : win.innerHeight) + 'px';
     }
     function openDialog(kind, heading, trigger) {
-      if (locked()) return null; closePanels(false); popovers.forEach(function (popover) { popover.close(false); }); rememberSelection();
+      if (locked()) return null; clearFileDrop(); closePanels(false); popovers.forEach(function (popover) { popover.close(false); }); rememberSelection();
       var panel = section.querySelector('[data-panel="' + kind + '"]'), layer = doc.createElement('div'), dialog = doc.createElement('section'), header = doc.createElement('div'), titleId = 'mosaic-editor-dialog-' + (++dialogSequence), events = new win.AbortController();
       layer.className = 'mosaic-editor-dialog-backdrop'; layer.setAttribute('data-mosaic-owned',''); dialog.className = 'mosaic-editor-dialog'; dialog.setAttribute('role','dialog'); dialog.setAttribute('aria-modal','true'); dialog.setAttribute('aria-labelledby',titleId); dialog.tabIndex = -1;
       header.className = 'mosaic-editor-dialog-heading'; var label = doc.createElement('h2'), close = doc.createElement('button'); label.id = titleId; label.textContent = heading; close.type = 'button'; close.className = 'mosaic-editor-dialog-close'; close.setAttribute('aria-label','Close dialog'); close.innerHTML = icon('close'); header.append(label,close);
@@ -211,26 +236,38 @@
       } catch (error) { if (destroyed) return; nativeError = true; feedback.textContent = error.message || 'Attachments could not be loaded.'; }
       finally { nativeBusy = false; if (!destroyed) { more.hidden = !nativeMore && !nativeError; more.textContent = nativeError ? 'Retry attachments' : 'More attachments'; updateFilesEmpty(); updateControls(); } }
     }
-    function validFile(file, imageOnly) { return file && file.size > 0 && file.size <= 5 * 1024 * 1024 && FILE_EXTENSIONS.test(file.name || '') && (!imageOnly || IMAGE_TYPES.test(file.type || '')); }
+    function imageType(file) { return IMAGE_EXTENSIONS[String(file && file.name || '').split('.').pop().toLowerCase()] || ''; }
+    function validFile(file, imageOnly) {
+      if (!file || typeof file.name !== 'string' || !Number.isSafeInteger(file.size) || file.size < 1 || file.size > 5 * 1024 * 1024 || typeof file.slice !== 'function' || !FILE_EXTENSIONS.test(file.name || '') || file.name.length > 180 || /[\/\\\u0000-\u001f\u007f]/.test(file.name)) return false;
+      var image = imageType(file), type = String(file.type || '').toLowerCase(), extension = file.name.split('.').pop().toLowerCase();
+      if (image) return !type || type === image;
+      return !imageOnly && (!type || type === 'application/octet-stream' || (FILE_MIME[extension] || []).includes(type));
+    }
     function removeUnusedPending(id) { if (id && !pendingNodes(body,id).length) { files = files.filter(function (item) { if (item.id !== id) return true; revoke(item); return false; }); renderFiles(); } }
     function stageFiles(incoming, imageOnly, description, replacement) {
       if (locked()) return 0;
       if (typeof api.uploadAttachment !== 'function' || typeof root.MosaicAPI.createAttachmentHTML !== 'function') { message('Attachment uploads are unavailable. Reload the page to try again.',true); return 0; }
-      var rejected = [], added = 0;
-      Array.from(incoming || []).forEach(function (file) {
-        var image = IMAGE_TYPES.test(file.type || '');
-        if (!validFile(file,imageOnly)) { rejected.push(file.name || 'File'); return; }
+      var incomingFiles = Array.from(incoming || []), rejected = incomingFiles.filter(function (file) { return !validFile(file,imageOnly); });
+      if (rejected.length) { message('No files were added. Choose supported files up to 5 MB each.',true); return 0; }
+      var prepared = [], markup = [];
+      try { incomingFiles.forEach(function (file) {
+        var image = !!imageType(file);
         var item = {id:'file-' + (++sequence),file:file,image:image,alt:description == null ? file.name.replace(/\.[^.]+$/,'') : description,uploaded:null,objectURL:''};
+        prepared.push(item);
         var node = doc.createElement(image ? 'img' : 'a'); node.setAttribute('data-mosaic-pending',item.id);
         if (image) { node.alt = item.alt; if (typeof win.URL.createObjectURL === 'function') { item.objectURL = win.URL.createObjectURL(file); node.src = item.objectURL; } }
         else { node.href = '#'; node.textContent = file.name; }
-        files.push(item); added++;
+        item.node = node;
+      }); } catch (_) { prepared.forEach(revoke); message('The files could not be prepared. No files were added; try the file chooser.',true); return 0; }
+      prepared.forEach(function (item) {
+        var node = item.node; delete item.node; files.push(item);
         if (replacement && body.contains(replacement)) { var oldId = replacement.getAttribute('data-mosaic-pending'); replacement.replaceWith(node); replacement = null; removeUnusedPending(oldId); }
-        else insertHTML('<p>' + node.outerHTML + '</p><p><br /></p>');
+        else markup.push('<p>' + node.outerHTML + '</p><p><br /></p>');
       });
+      // A multi-file insertion is one native edit transaction, preserving Undo.
+      if (markup.length) insertHTML(markup.join(''));
       renderFiles(); changed();
-      message(rejected.length ? 'Could not add ' + rejected.join(', ') + '. Choose supported files up to 5 MB.' : '',!!rejected.length);
-      return added;
+      message(''); return prepared.length;
     }
     function serializableBody(includeUploaded) {
       var clone = body.cloneNode(true);
@@ -413,17 +450,49 @@
       var cleaned = sanitizeHTML(html,purifier,doc); insertHTML(cleaned);
       if (/<img\b/i.test(html) && !/<img\b/i.test(cleaned)) message('External images were not copied. Use Insert image to upload the original file.');
     });
+    function dropSelection(event) {
+      var range = null;
+      try {
+        if (typeof doc.caretPositionFromPoint === 'function') {
+          var caret = doc.caretPositionFromPoint(event.clientX,event.clientY);
+          if (caret && body.contains(caret.offsetNode)) { range = doc.createRange(); range.setStart(caret.offsetNode,caret.offset); range.collapse(true); }
+        }
+        if (!range && typeof doc.caretRangeFromPoint === 'function') range = doc.caretRangeFromPoint(event.clientX,event.clientY);
+      } catch (_) { /* Use the last valid writing position when hit-testing is unavailable. */ }
+      if (range && body.contains(range.commonAncestorContainer)) { selection = range.cloneRange(); selection.collapse(true); }
+      else { rememberSelection(); if (selection && body.contains(selection.commonAncestorContainer)) { selection = selection.cloneRange(); selection.collapse(false); } }
+    }
+    function handleFilesGesture(event) {
+      event.preventDefault(); event.stopImmediatePropagation();
+      try { event.dataTransfer.dropEffect = 'copy'; } catch (_) {}
+      if (event.type !== 'drop') { body.classList.add('is-file-drop'); dropHighlights.add(body); return; }
+      clearFileDrop(); internalTextDrag = false;
+      var incoming, items;
+      try {
+        incoming = Array.from(event.dataTransfer.files || []); items = Array.from(event.dataTransfer.items || []).filter(function (item) { return item.kind === 'file'; });
+        if (!incoming.length || items.length > incoming.length || items.some(function (item) { var entry = typeof item.webkitGetAsEntry === 'function' && item.webkitGetAsEntry(); return entry && entry.isDirectory; })) { message('No files were added. Drop individual files rather than a folder.',true); return; }
+      } catch (_) { message('The dropped files could not be read. Try the file chooser.',true); return; }
+      if (incoming.some(function (file) { return !validFile(file,false); })) { message('No files were added. Choose supported files up to 5 MB each.',true); return; }
+      dropSelection(event);
+      var added = stageFiles(incoming,false);
+      if (added) message(added + (added === 1 ? ' file added' : ' files added') + ' to the draft. Files upload when you publish.');
+    }
+    on(body,'dragenter',function (event) { handleFileDrop(event); });
+    on(body,'dragover',function (event) { handleFileDrop(event); });
+    on(body,'dragleave',function (event) { if (!event.relatedTarget || !body.contains(event.relatedTarget)) clearFileDrop(); });
+    on(win,'dragend',clearFileDrop); on(win,'drop',clearFileDrop); on(win,'blur',clearFileDrop);
+    on(win,'keydown',function (event) { if (event.key === 'Escape') clearFileDrop(); });
     on(body,'dragstart',function () { internalTextDrag = !locked(); }); on(body,'dragend',function () { internalTextDrag = false; });
     on(body,'drop',function (event) {
-      if (locked() || !event.dataTransfer) { event.preventDefault(); return; }
-      if (event.dataTransfer.files.length) { event.preventDefault(); return; }
+      if (carriesFiles(event.dataTransfer)) { if (!handleFileDrop(event)) { event.preventDefault(); event.stopImmediatePropagation(); clearFileDrop(); } return; }
+      if (locked() || previewing || activeDialog || !event.dataTransfer) { event.preventDefault(); return; }
       if (internalTextDrag) { internalTextDrag = false; return; }
       event.preventDefault();
-      var range = doc.caretRangeFromPoint && doc.caretRangeFromPoint(event.clientX,event.clientY); if (range && body.contains(range.commonAncestorContainer)) selection = range;
+      dropSelection(event);
       var html = event.dataTransfer.getData('text/html'); if (!html) { var text = doc.createElement('div'); text.textContent = event.dataTransfer.getData('text/plain'); html = text.innerHTML.replace(/\r?\n/g,'<br />'); } if (html) insertHTML(sanitizeHTML(html,purifier,doc));
     });
     on(previewButton,'click',function () {
-      if (!ready || busy) return; closePanels(); previewing = !previewing;
+      if (!ready || busy) return; clearFileDrop(); closePanels(); previewing = !previewing;
       var preview = section.querySelector('.mosaic-editor-preview'); preview.replaceChildren();
       if (previewing) {
         var heading = doc.createElement('h1'), intro = doc.createElement('p'), content = doc.createElement('div'); heading.textContent = title.value || 'Untitled page'; intro.className = 'mosaic-editor-preview-summary'; intro.textContent = summary.value;
@@ -498,8 +567,8 @@
         message(pending ? 'An earlier publication is unconfirmed. Check publication to reconcile it before editing.' : ''); updateControls(); loadNativeFiles();
       } catch (error) { if (!destroyed) message(error.message,true); }
     })();
-    return Object.freeze({destroy:function () { if (destroyed) return; closePanels(false); setExpanded(false); destroyed = true; lifecycle.abort(); files.forEach(revoke); popovers.forEach(function (popover) { popover.destroy(); }); section.remove(); },hasUnsavedChanges:dirty,isPublishing:function () { return busy; }});
+    return Object.freeze({destroy:function () { if (destroyed) return; clearFileDrop(); dropTargets.delete(body); closePanels(false); setExpanded(false); destroyed = true; lifecycle.abort(); files.forEach(revoke); popovers.forEach(function (popover) { popover.destroy(); }); section.remove(); },hasUnsavedChanges:dirty,isPublishing:function () { return busy; }});
   }
-  var editor = Object.freeze({mount:mount,sanitizeHTML:sanitizeHTML,nativeURL:nativeURL}); root.MosaicEditor = editor;
+  var editor = Object.freeze({mount:mount,sanitizeHTML:sanitizeHTML,nativeURL:nativeURL,acceptsFileDrop:acceptsFileDrop,handleFileDrop:handleFileDrop}); root.MosaicEditor = editor;
   if (typeof module === 'object' && module.exports) module.exports = editor;
 })(typeof window !== 'undefined' ? window : globalThis);
