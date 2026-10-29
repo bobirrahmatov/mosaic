@@ -247,7 +247,7 @@
     var rootId = id(peopleConfig.rootGeid || config.rootGeid || '1001397832');
     var preview = config.mode === 'preview' || peopleConfig.preview === true || config.preview === true;
     var d = target.ownerDocument, listeners = [], destroyed = false, controller = null, request = 0, loading = false;
-    var state = null, nodes = [], nodeById = new Map(), frame = null, resizeObserver = null, centerOnLayout = false;
+    var state = null, nodes = [], nodeById = new Map(), frame = null, resizeObserver = null, centerOnLayout = false, observedWidth = null, heroMedia = null;
     function el(tag, cls, value) { var n = d.createElement(tag); if (cls) n.className = cls; if (value !== undefined) n.textContent = value; return n; }
     function add(parent, tag, cls, value) { var n = el(tag, cls, value); parent.appendChild(n); return n; }
     function contactIcon(label) {
@@ -264,7 +264,7 @@
     add(heading, 'p', 'mt-intro', 'The people behind Mosaic and the connections that bring our work together.');
     if (preview) add(heading, 'p', 'mt-preview-note', 'Reference preview · based on the supplied organization chart. Live directory data has not been verified here.');
     var cover = coverURL(config);
-    if (cover) { var hero = add(root, 'figure', 'mt-hero'), heroImage = add(hero, 'img'); heroImage.alt = ''; heroImage.width = 800; heroImage.height = 500; heroImage.decoding = 'async'; heroImage.loading = 'lazy'; heroImage.src = cover; }
+    if (cover) { var hero = add(root, 'figure', 'mt-hero'), heroImage = add(hero, 'img'); heroImage.alt = ''; heroImage.width = 800; heroImage.height = 500; heroImage.decoding = 'async'; heroImage.loading = 'eager'; heroImage.src = cover; }
     var chart = add(root, 'section', 'mt-chart'); add(chart, 'h2', 'mt-section-title', 'Organization chart');
     var workbench = add(chart, 'div', 'mt-workbench');
     var status = add(workbench, 'div', 'mt-status'); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
@@ -274,6 +274,7 @@
     var stage = add(viewport, 'div', 'mt-chart-stage');
     var announcement = add(root, 'span', 'mt-sr'); announcement.setAttribute('role', 'status'); announcement.setAttribute('aria-live', 'polite');
     target.appendChild(root);
+    if (heroImage && w.MosaicMedia && typeof w.MosaicMedia.prepare === 'function') heroMedia = w.MosaicMedia.prepare(heroImage,hero,{eager:true,priority:true});
 
     function normalize(result) {
       if (!result || id(result.rootId) !== rootId || !Array.isArray(result.people) || !Array.isArray(result.ancestors)) throw new Error('The people directory returned an unexpected team response.');
@@ -371,8 +372,12 @@
     }
     function layout() {
       if (destroyed || !state || body.hidden || !nodes.length) return;
-      var levelHeights = [], levelGaps = [], levelY = [], gap = 28, padding = 24;
-      nodes.forEach(function (node) { node.height = node.card.offsetHeight || 232; levelHeights[node.depth] = Math.max(levelHeights[node.depth] || 0, node.height); levelGaps[node.depth] = 44; });
+      var levelHeights = [], levelGaps = [], levelY = [], gap = 28, padding = 24, cardHeight = 232;
+      // Measure natural wrapping before applying one shared height. Keep writes
+      // and reads in separate passes so large teams need only one layout flush.
+      nodes.forEach(function (node) { node.card.style.height = 'auto'; });
+      nodes.forEach(function (node) { cardHeight = Math.max(cardHeight, node.card.offsetHeight || 0); });
+      nodes.forEach(function (node) { node.height = cardHeight; node.card.style.height = cardHeight + 'px'; levelHeights[node.depth] = cardHeight; levelGaps[node.depth] = 44; });
       for (var i = nodes.length - 1; i >= 0; i--) {
         var node = nodes[i], children = state.children.get(node.id) || [], total = 0;
         children.forEach(function (childId) { total += nodeById.get(childId).subtreeWidth; });
@@ -406,11 +411,11 @@
       else if (node.x + node.width > viewport.scrollLeft + width - margin) viewport.scrollLeft = node.x + node.width - width + margin;
       if (node.y < viewport.scrollTop + margin) viewport.scrollTop = Math.max(0, node.y - margin);
       else if (node.y + node.height > viewport.scrollTop + height - margin) viewport.scrollTop = node.y + node.height - height + margin;
-      // Desktop uses the page's vertical scroll; mobile may also scroll the chart.
+      // The page owns vertical scrolling; the chart keeps native horizontal scroll.
       if (typeof node.card.scrollIntoView === 'function') node.card.scrollIntoView({block:'nearest',inline:'nearest',behavior:'auto'});
     }
     on(root, 'click', function (event) { var b = event.target.closest('button[data-action=retry]'); if (b && root.contains(b) && !b.disabled && !loading) load(); });
-    on(root, 'error', function (event) { if (event.target && event.target.classList && event.target.classList.contains('mt-photo')) event.target.remove(); else if (event.target === heroImage && hero) hero.hidden = true; }, true);
+    on(root, 'error', function (event) { if (event.target && event.target.classList && event.target.classList.contains('mt-photo')) event.target.remove(); else if (event.target === heroImage && hero) heroImage.hidden = true; }, true);
     on(stage, 'keydown', function (event) {
       if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
       var card = event.target.closest('.mt-card'); if (!card || event.target !== card || !stage.contains(card)) return;
@@ -424,10 +429,19 @@
       else return;
       event.preventDefault(); focusNode(next);
     });
-    if (typeof w.ResizeObserver === 'function') { resizeObserver = new w.ResizeObserver(function () { scheduleLayout(true); }); resizeObserver.observe(viewport); }
-    else on(w, 'resize', function () { scheduleLayout(true); });
+    if (typeof w.ResizeObserver === 'function') {
+      resizeObserver = new w.ResizeObserver(function () {
+        if (destroyed) return;
+        var width = viewport.clientWidth;
+        // Our own card/stage height changes must not reset a user's scroll or
+        // trigger an observer loop. Only width changes require remeasurement.
+        if (width === observedWidth) return;
+        observedWidth = width; scheduleLayout(false);
+      });
+      resizeObserver.observe(viewport);
+    } else on(w, 'resize', function () { scheduleLayout(false); });
     if (d.fonts && d.fonts.ready) d.fonts.ready.then(function () { if (!destroyed) scheduleLayout(false); });
-    var handle = Object.freeze({destroy:function () { if (destroyed) return; destroyed = true; request++; if (controller) controller.abort(); if (frame !== null) w.clearTimeout(frame); if (resizeObserver) resizeObserver.disconnect(); listeners.splice(0).forEach(function (remove) { remove(); }); root.remove(); if (mounted.get(target) === handle) mounted.delete(target); }});
+    var handle = Object.freeze({destroy:function () { if (destroyed) return; destroyed = true; request++; if (controller) controller.abort(); if (frame !== null) w.clearTimeout(frame); if (resizeObserver) resizeObserver.disconnect(); if (heroMedia && typeof heroMedia.destroy === 'function') heroMedia.destroy(); listeners.splice(0).forEach(function (remove) { remove(); }); root.remove(); if (mounted.get(target) === handle) mounted.delete(target); }});
     mounted.set(target, handle); load(); return handle;
   }
   w.MosaicTeam = Object.freeze({mount:mount});
