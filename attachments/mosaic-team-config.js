@@ -1,5 +1,6 @@
 /* Mosaic organisation settings. Re-attach this file to change the starting manager.
- * Directory records and staff photos are fetched in the viewer's authenticated browser.
+ * Directory JSON uses credential-free CORS when its approved URL is cross-origin.
+ * Staff photos load separately from the approved photo endpoint in the viewer's browser.
  * No staff snapshot, access token or API credential belongs in this attachment. */
 window.MosaicTeamConfig={
   rootGeid:'1001397832',

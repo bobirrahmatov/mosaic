@@ -1,6 +1,7 @@
 /* Citi directory adapter for the explicitly configured Mosaic organisation.
  * Queries one person or one manager at a time; never searches the whole firm.
- * Directory text remains plain data, and credentials go only to allowed URLs. */
+ * Directory text remains plain data. Cross-origin directory JSON uses
+ * credential-free CORS; same-origin requests retain browser credentials. */
 (function(w){
   'use strict';
   if(w.MosaicPeopleAPI)return;
@@ -27,6 +28,8 @@
     }
     var searchUrl=endpoint(options.searchUrl===undefined?SEARCH:options.searchUrl,'search');
     var photoUrl=endpoint(options.photoUrl===undefined?PHOTO:options.photoUrl,'photo');
+    var crossOrigin=new URL(searchUrl).origin!==location.origin;
+    function authMessage(reason){return reason+(crossOrigin?' Cross-origin directory requests omit cookies to match this endpoint’s CORS policy. Ask the directory owner to confirm SSO/CORS support for Confluence; an approved same-origin integration may be required.':' Sign in to the directory and try again.');}
     function photoFor(geid){if(!photoUrl)return '';var image=new URL(photoUrl);image.searchParams.set('geid',geid);return image.href;}
     var topId=id(options.topGeid||'1001153649'),rootDefault=id(options.rootGeid||'1001397832');
     if(!topId||!rootDefault)throw error('CONFIG','Directory root and top GEIDs must be digit strings.');
@@ -53,15 +56,15 @@
         timer=w.setTimeout(function(){timedOut=true;controller.abort();},timeout);
         var url=new URL(searchUrl);url.searchParams.set('q',query);url.searchParams.set('q.mode','advanced');
         if(startParam)url.searchParams.set(startParam,String(start));if(rowsParam)url.searchParams.set(rowsParam,String(rows));
-        var response=await w.fetch(url.href,{method:'GET',credentials:'include',redirect:'manual',headers:{Accept:'application/json'},signal:controller.signal});
+        var response=await w.fetch(url.href,{method:'GET',credentials:crossOrigin?'omit':'same-origin',mode:'cors',redirect:'manual',headers:{Accept:'application/json'},signal:controller.signal});
         check(signal);
-        if(response.type==='opaqueredirect'||response.status>=300&&response.status<400)throw error('AUTH_REQUIRED','The directory redirected the request, possibly to sign-in. Open the directory, sign in and try again.');
-        if(response.status===401||response.status===403)throw error('AUTH_REQUIRED','The Citi directory requires an authorised signed-in session. Sign in to the directory and try again.');
+        if(response.type==='opaqueredirect'||response.status>=300&&response.status<400)throw error('AUTH_REQUIRED',authMessage('The directory redirected the request, possibly to sign-in.'));
+        if(response.status===401||response.status===403)throw error('AUTH_REQUIRED',authMessage('The Citi directory did not authorise this request (HTTP '+response.status+').'));
         if(!response.ok)throw error('DIRECTORY_HTTP','The Citi directory returned HTTP '+response.status+'. Try again when the service is available.');
-        if(response.url){var finalUrl=new URL(response.url,url.href);if(finalUrl.origin!==url.origin||finalUrl.pathname!==url.pathname)throw error('AUTH_REQUIRED','The directory redirected away from its API, possibly to sign-in. Open the directory, sign in and try again.');}
+        if(response.url){var finalUrl=new URL(response.url,url.href);if(finalUrl.origin!==url.origin||finalUrl.pathname!==url.pathname)throw error('AUTH_REQUIRED',authMessage('The directory redirected away from its API, possibly to sign-in.'));}
         var contentType=response.headers?.get('content-type')||'';
-        if(/html/i.test(contentType))throw error('AUTH_REQUIRED','The directory returned a sign-in page instead of people data. Sign in to the directory and try again.');
-        var body;try{body=await response.json();}catch(_){throw error('INVALID_RESPONSE','The directory response was not valid JSON. Check sign-in and the directory service, then retry.');}
+        if(/html/i.test(contentType))throw error('AUTH_REQUIRED',authMessage('The directory returned a sign-in page instead of people data.'));
+        var body;try{body=await response.json();}catch(_){throw error('INVALID_RESPONSE',crossOrigin?'The directory response was not valid JSON. Ask the directory owner to check the endpoint and its SSO/CORS configuration, then retry.':'The directory response was not valid JSON. Check sign-in and the directory service, then retry.');}
         check(signal);var people=body&&body.people,hits=people&&people.hits;
         if(typeof hits==='string'&&/^\d+$/.test(hits))hits=Number(hits);
         if(!people||!Array.isArray(people.docs)||!Number.isSafeInteger(hits)||hits<0)throw error('INVALID_RESPONSE','The directory response did not contain a valid people.docs array and people.hits count.');
@@ -69,7 +72,7 @@
       }catch(e){
         if(signal&&signal.aborted)throw abort();if(timedOut)throw error('TIMEOUT','The directory request timed out. Try again on the Citi network.');
         if(e.code)throw e;if(e.name==='AbortError')throw abort();
-        throw error('NETWORK_OR_CORS','The directory could not be reached or the browser blocked the cross-origin request. Check the Citi network, directory sign-in and allowed Confluence origin, then retry.');
+        throw error('NETWORK_OR_CORS',crossOrigin?'The directory could not be reached or the browser blocked its CORS response. Check the Citi network. If this persists, ask the directory owner to verify SSO/CORS support for credential-free requests from Confluence.':'The directory could not be reached. Check the Citi network and the same-origin directory endpoint, then retry.');
       }finally{w.clearTimeout(timer);signal?.removeEventListener('abort',cancel);release();}
     }
     function normalize(doc){

@@ -99,12 +99,17 @@ html:not([data-color-mode])[data-theme="dark"],body:not([data-color-mode])[data-
 .mosaic-export-status{flex-basis:100%;color:var(--mosaic-theme-muted,#61758c)}
 .mosaic-export-status[data-error=true]{color:var(--mosaic-theme-danger,#b42318)}
 .mosaic-native-reader-tools{font-family:"Citi-Sans-Text",sans-serif;margin-block:12px 20px}
-/* The flush-right rail is 64px wide. Native readers keep a 24px content gap;
- * custom pages reserve its width outside their surface so a full-bleed hero
- * does not acquire an inner gutter. Host owns this temporary surface marker. */
+/* Only verified content ancestors receive this marker; identical max-w-screen
+ * utilities in navigation, sidebars or dialogs keep their native geometry. */
+body[data-mosaic-host=active] [data-mosaic-fluid-container=true]{max-width:none!important;min-width:0!important}
+/* Page surfaces remain flush with their available column. Reserve the 64px
+ * rail plus a small content gap inside the surface, never as an outer margin.
+ * About's decorative video stays full bleed; its copy and controls stay clear. */
 @media(min-width:761px) and (min-height:481px){
-  body[data-mosaic-native-page=true] .mosaic-article-surface{box-sizing:border-box;padding-right:88px!important}
-  body[data-mosaic-host=active] #mosaic.mosaic-article-surface{width:calc(100% - 64px)!important;margin-left:auto!important;margin-right:64px!important}
+  body[data-mosaic-native-page=true] .mosaic-article-surface{box-sizing:border-box;padding-right:80px!important}
+  body[data-mosaic-host=active] #mosaic.mosaic-article-surface:not([data-mosaic-role=about]){padding-right:80px!important}
+  body[data-mosaic-host=active] #mosaic.mosaic-article-surface[data-mosaic-role=about] :is(.mo-about-body,.mo-cube-copy){padding-right:80px!important}
+  body[data-mosaic-host=active] #mosaic.mosaic-article-surface[data-mosaic-role=about] :is(.mo-video-toggle,.mo-video-note){right:80px!important}
 }
 @media(max-width:760px),(max-height:480px){
   body[data-mosaic-host=active] .mosaic-article-surface{padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))!important}
@@ -112,7 +117,7 @@ html:not([data-color-mode])[data-theme="dark"],body:not([data-color-mode])[data-
 }
 @media print{body[data-mosaic-native-page=true]{--mosaic-theme-text:#17385e!important;--mosaic-theme-muted:#5b6c7e!important;--mosaic-theme-surface:#fff!important;--mosaic-theme-page:#fff!important;--mosaic-theme-subtle:#f0f5f9!important;--mosaic-theme-border:#d5e1ee!important;--mosaic-theme-link:#255be3!important;color-scheme:light;background:#fff!important}}
 @media print{body[data-mosaic-host=active] :is(#header,#sidebar,.ia-fixed-sidebar,.acs-side-bar,.fixture-navbar,.preview-strip,#main-header .content-navigation,.mosaic-native-results-link){display:none!important}body[data-mosaic-native-page=true] .mosaic-article-surface{padding:0!important;border-radius:0!important;box-shadow:none!important}body[data-mosaic-host=active] :is(#main,.fixture-layout){display:block!important;margin:0!important;width:auto!important}body[data-mosaic-native-page=true] :is(#content,#main-content,.wiki-content,.native-page){background:#fff!important;color:#17385e!important}body[data-mosaic-native-page=true] :is(#title-heading,#title-text){color:#17385e!important}}
-@media print{body[data-mosaic-host=active] .mosaic-article-surface{padding:0!important}body[data-mosaic-host=active] #mosaic.mosaic-article-surface{width:100%!important;margin:0!important}}
+@media print{body[data-mosaic-host=active] .mosaic-article-surface{padding:0!important}body[data-mosaic-host=active] #mosaic.mosaic-article-surface{width:100%!important;margin:0!important}body[data-mosaic-host=active] #mosaic.mosaic-article-surface[data-mosaic-role=about] :is(.mo-about-body,.mo-cube-copy){padding-right:0!important}}
 .mosaic-native-edit-link,.mosaic-native-results-link{display:inline-block;font:14px/1.4 "Citi-Sans-Text",sans-serif;color:var(--mosaic-theme-link,#255be3);text-decoration:none;padding:8px 0;margin-right:20px}
 .mosaic-native-edit-link:focus-visible,.mosaic-native-results-link:focus-visible{outline:2px solid var(--mosaic-theme-focus,#255be3);outline-offset:2px}
 /* Verified native readers only. Host activation excludes native authoring;
@@ -131,7 +136,7 @@ body[data-mosaic-host="active"]:not(:has([data-mosaic-root])) :is(#main-content.
 body[data-mosaic-host="active"]:not(:has([data-mosaic-root])) :is(#main-content.wiki-content,#main-content .wiki-content) img{max-width:100%;height:auto}
 
 /* Content styles are deliberately scoped; the existing Confluence navbar owns its layout. */
-#mosaic{--mo-blue:var(--mosaic-theme-link,#255be3);--mo-accent:#255be3;--mo-navy:#10152f;--mo-ink:var(--mosaic-theme-text,#101828);--mo-muted:var(--mosaic-theme-muted,#526078);--mo-line:var(--mosaic-theme-border,#d9e1eb);--mo-soft:var(--mosaic-theme-subtle,#f2f5f8);--mo-surface:var(--mosaic-theme-surface,#fff);--mo-radius:28px;color:var(--mo-ink);background:var(--mo-surface);border-radius:20px;color-scheme:var(--mosaic-color-scheme,normal);font-family:'Citi-Sans-Text',Arial,sans-serif;font-size:16px;line-height:1.6;max-width:1320px;margin:0 auto;padding:36px clamp(20px,4vw,64px) 64px;box-sizing:border-box;min-width:0}
+#mosaic{--mo-blue:var(--mosaic-theme-link,#255be3);--mo-accent:#255be3;--mo-navy:#10152f;--mo-ink:var(--mosaic-theme-text,#101828);--mo-muted:var(--mosaic-theme-muted,#526078);--mo-line:var(--mosaic-theme-border,#d9e1eb);--mo-soft:var(--mosaic-theme-subtle,#f2f5f8);--mo-surface:var(--mosaic-theme-surface,#fff);--mo-radius:28px;color:var(--mo-ink);background:var(--mo-surface);border-radius:20px;color-scheme:var(--mosaic-color-scheme,normal);font-family:'Citi-Sans-Text',Arial,sans-serif;font-size:16px;line-height:1.6;width:100%;max-width:none;margin:0;padding:36px clamp(20px,4vw,64px) 64px;box-sizing:border-box;min-width:0}
 #mosaic *,#mosaic *::before,#mosaic *::after{box-sizing:border-box}
 #mosaic [hidden]{display:none!important}
 #mosaic h1,#mosaic h2,#mosaic h3,#mosaic h4{font-family:'Citi-Sans-Display','Citi-Sans-Text',Arial,sans-serif;font-weight:400;color:inherit;letter-spacing:-.025em;line-height:1.15;margin:0 0 20px}
@@ -173,7 +178,7 @@ body[data-mosaic-host="active"]:not(:has([data-mosaic-root])) :is(#main-content.
 @media(hover:hover) and (pointer:fine){#mosaic .mo-feature-image[data-dismissed] .mo-feature-panel{transform:translateX(100%)}#mosaic .mo-feature-image[data-dismissed] .mo-feature-hint{opacity:1;pointer-events:auto}}
 
 /* About is one continuous host surface, with the media flush to its rounded top. */
-#mosaic[data-mosaic-role="about"]{max-width:1440px;padding:0;border-radius:20px;overflow:hidden}
+#mosaic[data-mosaic-role="about"]{max-width:none;padding:0;border-radius:20px;overflow:hidden}
 #mosaic .mo-about-page{background:var(--mo-surface);min-width:0}
 #mosaic .mo-about-page>.mo-cube{border-radius:0;min-height:560px}
 #mosaic .mo-about-page .mo-cube-copy{min-height:560px;padding:clamp(28px,4vw,60px)}
@@ -418,11 +423,13 @@ body[data-mosaic-host="active"]:not(:has([data-mosaic-root])) :is(#main-content.
 .mo-choice-popover .mo-choice-check path{fill:none!important;stroke:currentColor!important;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .mo-choice-popover [aria-selected=true] .mo-choice-check{visibility:visible}
 .mosaic-drop-notice{position:fixed;z-index:2147483001;bottom:24px;left:50%;transform:translateX(-50%);box-sizing:border-box;width:max-content;max-width:calc(100vw - 32px);border:1px solid var(--mosaic-theme-border,#d9e1eb);border-radius:12px;background:var(--mosaic-theme-surface,#fff);color:var(--mosaic-theme-text,#17355f);box-shadow:0 8px 32px #071b3226;padding:14px 20px;font:14px/1.5 'Citi-Sans-Text',Arial,sans-serif;pointer-events:none}
-[data-mosaic-add-page]{display:inline-flex;align-items:center;flex:none;font:14px/1.5 'Citi-Sans-Text',Arial,sans-serif;color:var(--mosaic-theme-text);color-scheme:var(--mosaic-color-scheme)}
+[data-mosaic-add-page]{display:inline-flex;align-items:center;flex:none;margin-inline-end:12px;font-family:inherit;font-size:14px;line-height:20px;color:var(--mosaic-theme-text);color-scheme:var(--mosaic-color-scheme)}
 [data-mosaic-add-page][hidden]{display:none!important}
-[data-mosaic-add-page] .mo-choice{appearance:none;display:inline-flex;align-items:center;gap:9px;white-space:nowrap;min-height:42px;border:1px solid var(--mosaic-theme-border);border-radius:100px;padding:9px 14px;background:var(--mosaic-theme-surface);color:var(--mosaic-theme-text);box-shadow:none;font:inherit;cursor:pointer}
-[data-mosaic-add-page] .mo-choice:hover,[data-mosaic-add-page] .mo-choice[aria-expanded=true]{background:var(--mosaic-theme-selected);border-color:var(--mosaic-theme-link);color:var(--mosaic-theme-link)}
-[data-mosaic-add-page] .mo-choice:focus-visible{outline:2px solid var(--mosaic-theme-focus);outline-offset:3px}
+:is(#mosaic,body) [data-mosaic-add-page] .mo-choice{appearance:none;box-sizing:border-box;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;min-height:32px;height:32px;border:1px solid var(--mosaic-theme-border);border-radius:100px;padding:5px 10px;background:var(--mosaic-theme-surface);color:var(--mosaic-theme-text);box-shadow:none;font-family:inherit;font-size:14px;font-weight:400;line-height:20px;cursor:pointer}
+:is(#mosaic,body) [data-mosaic-add-page] .mo-choice .mosaic-add-icon{width:18px!important;height:18px!important;min-width:18px!important;max-width:18px!important;flex-basis:18px!important}
+:is(#mosaic,body) [data-mosaic-add-page] .mo-choice .mo-choice-chevron{width:16px!important;height:16px!important;min-width:16px!important;max-width:16px!important;flex-basis:16px!important}
+:is(#mosaic,body) [data-mosaic-add-page] .mo-choice:hover,:is(#mosaic,body) [data-mosaic-add-page] .mo-choice[aria-expanded=true]{background:var(--mosaic-theme-selected);border-color:var(--mosaic-theme-link);color:var(--mosaic-theme-link)}
+:is(#mosaic,body) [data-mosaic-add-page] .mo-choice:focus-visible{outline:2px solid var(--mosaic-theme-focus);outline-offset:3px}
 #mosaic form.mosaic-search{display:flex;align-items:center;gap:12px;box-sizing:border-box;min-width:0;border:1px solid var(--mosaic-theme-border);border-radius:100px;background:var(--mosaic-theme-subtle);padding:6px 6px 6px 18px;box-shadow:none;min-height:58px;color:var(--mosaic-theme-text)}
 #mosaic form.mosaic-search:focus-within{border-color:var(--mosaic-theme-focus);outline:2px solid var(--mosaic-theme-focus);outline-offset:2px;box-shadow:none}
 #mosaic form.mosaic-search input[type=search]{appearance:none;-webkit-appearance:none;display:block;width:100%;min-width:0;flex:1;height:42px;padding:0;border:0!important;border-radius:0!important;box-shadow:none!important;outline:none!important;background:transparent!important;color:var(--mosaic-theme-text)!important;font:16px/1.5 'Citi-Sans-Text',Arial,sans-serif;text-indent:0}
@@ -481,7 +488,7 @@ body[data-mosaic-native-page=true][data-mosaic-style-flags~="hide-footer"] #foot
 .mosaic-native-page-tools svg{display:block!important;position:static!important;flex:none;width:18px!important;height:18px!important;margin:0!important;padding:0!important;fill:none!important;stroke:currentColor!important;stroke-linecap:round;stroke-linejoin:round}
 .mosaic-native-page-tools svg path{fill:none!important;stroke:currentColor!important}
 /* App and editor surfaces also follow the available host column. */
-body[data-mosaic-host=active] #mosaic{width:100%;max-width:none}
+body[data-mosaic-host=active] #mosaic{width:100%!important;max-width:none!important;margin-inline:0!important}
 @media(max-width:720px){body[data-mosaic-native-page=true] #main-content{font-size:16px}.mosaic-native-page-tools{gap:8px 12px;margin-bottom:24px}body[data-mosaic-native-page=true] #main-content :is(td,th){padding:9px}}
 @media print{.mosaic-native-page-tools,.mosaic-drop-notice{display:none!important}body[data-mosaic-native-page=true] #main-content{font-size:11pt;line-height:1.55}}
 

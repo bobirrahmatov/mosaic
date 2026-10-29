@@ -29,7 +29,7 @@
 /* Shared Mosaic deployment configuration. Keep page IDs in one place. */
 (function(w){'use strict';
   if(w.MosaicConfig)return;
-  var defaults={spaceKey:'mosaic',rootPageId:'3961414584',attachmentPageId:'3981001251',contextPath:'/confluence',pages:{home:'3961414584',about:'3981001532',team:'3981001536',resources:'3981001538',insights:'3981001542'},resources:[]};
+  var defaults={spaceKey:'mosaic',rootPageId:'3961414585',attachmentPageId:'3981001251',contextPath:'/confluence',pages:{home:'3961414585',about:'3981001532',team:'3981001536',resources:'3981001538',insights:'3981001542'},resources:[]};
   function resolve(overrides){var c=Object.assign({},defaults,overrides||{});c.pages=Object.assign({},defaults.pages,(overrides||{}).pages||{});c.pages.home=c.rootPageId;return c;}
   function asset(c,file){return (c.assetBase||c.contextPath+'/download/attachments/'+c.attachmentPageId+'/').replace(/\/?$/,'/')+encodeURIComponent(file);}
   function page(c,key){var id=c.pages[key]||key;return c.contextPath+'/pages/viewpage.action?pageId='+encodeURIComponent(id);}
@@ -681,15 +681,15 @@
   'use strict';
   if (w.MosaicHost) return;
   var ICONS = {"home":"M5.5 3.25C4.25736 3.25 3.25 4.25736 3.25 5.5V8.99998C3.25 10.2426 4.25736 11.25 5.5 11.25H9C10.2426 11.25 11.25 10.2426 11.25 8.99998V5.5C11.25 4.25736 10.2426 3.25 9 3.25H5.5ZM4.75 5.5C4.75 5.08579 5.08579 4.75 5.5 4.75H9C9.41421 4.75 9.75 5.08579 9.75 5.5V8.99998C9.75 9.41419 9.41421 9.74998 9 9.74998H5.5C5.08579 9.74998 4.75 9.41419 4.75 8.99998V5.5ZM5.5 12.75C4.25736 12.75 3.25 13.7574 3.25 15V18.5C3.25 19.7426 4.25736 20.75 5.5 20.75H9C10.2426 20.75 11.25 19.7427 11.25 18.5V15C11.25 13.7574 10.2426 12.75 9 12.75H5.5ZM4.75 15C4.75 14.5858 5.08579 14.25 5.5 14.25H9C9.41421 14.25 9.75 14.5858 9.75 15V18.5C9.75 18.9142 9.41421 19.25 9 19.25H5.5C5.08579 19.25 4.75 18.9142 4.75 18.5V15ZM12.75 5.5C12.75 4.25736 13.7574 3.25 15 3.25H18.5C19.7426 3.25 20.75 4.25736 20.75 5.5V8.99998C20.75 10.2426 19.7426 11.25 18.5 11.25H15C13.7574 11.25 12.75 10.2426 12.75 8.99998V5.5ZM15 4.75C14.5858 4.75 14.25 5.08579 14.25 5.5V8.99998C14.25 9.41419 14.5858 9.74998 15 9.74998H18.5C18.9142 9.74998 19.25 9.41419 19.25 8.99998V5.5C19.25 5.08579 18.9142 4.75 18.5 4.75H15ZM15 12.75C13.7574 12.75 12.75 13.7574 12.75 15V18.5C12.75 19.7426 13.7574 20.75 15 20.75H18.5C19.7426 20.75 20.75 19.7427 20.75 18.5V15C20.75 13.7574 19.7426 12.75 18.5 12.75H15ZM14.25 15C14.25 14.5858 14.5858 14.25 15 14.25H18.5C18.9142 14.25 19.25 14.5858 19.25 15V18.5C19.25 18.9142 18.9142 19.25 18.5 19.25H15C14.5858 19.25 14.25 18.9142 14.25 18.5V15Z","about":"M5.5 3.25C4.25736 3.25 3.25 4.25736 3.25 5.5V18.5C3.25 19.7426 4.25736 20.75 5.5 20.75H18.5001C19.7427 20.75 20.7501 19.7426 20.7501 18.5V5.5C20.7501 4.25736 19.7427 3.25 18.5001 3.25H5.5ZM4.75 5.5C4.75 5.08579 5.08579 4.75 5.5 4.75H18.5001C18.9143 4.75 19.2501 5.08579 19.2501 5.5V18.5C19.2501 18.9142 18.9143 19.25 18.5001 19.25H5.5C5.08579 19.25 4.75 18.9142 4.75 18.5V5.5ZM6.25005 9.7143C6.25005 9.30008 6.58583 8.9643 7.00005 8.9643L17 8.96429C17.4143 8.96429 17.75 9.30008 17.75 9.71429C17.75 10.1285 17.4143 10.4643 17 10.4643L7.00005 10.4643C6.58583 10.4643 6.25005 10.1285 6.25005 9.7143ZM6.25005 14.2857C6.25005 13.8715 6.58583 13.5357 7.00005 13.5357H17C17.4143 13.5357 17.75 13.8715 17.75 14.2857C17.75 14.6999 17.4143 15.0357 17 15.0357H7.00005C6.58583 15.0357 6.25005 14.6999 6.25005 14.2857Z","team":"M8.80443 5.60156C7.59109 5.60156 6.60749 6.58517 6.60749 7.79851C6.60749 9.01185 7.59109 9.99545 8.80443 9.99545C10.0178 9.99545 11.0014 9.01185 11.0014 7.79851C11.0014 6.58517 10.0178 5.60156 8.80443 5.60156ZM5.10749 7.79851C5.10749 5.75674 6.76267 4.10156 8.80443 4.10156C10.8462 4.10156 12.5014 5.75674 12.5014 7.79851C12.5014 9.84027 10.8462 11.4955 8.80443 11.4955C6.76267 11.4955 5.10749 9.84027 5.10749 7.79851ZM4.86252 15.3208C4.08769 16.0881 3.70377 17.0608 3.51705 17.8611C3.48384 18.0034 3.5211 18.1175 3.60712 18.2112C3.70161 18.3141 3.86659 18.3987 4.07591 18.3987H13.4249C13.6343 18.3987 13.7992 18.3141 13.8937 18.2112C13.9797 18.1175 14.017 18.0034 13.9838 17.8611C13.7971 17.0608 13.4132 16.0881 12.6383 15.3208C11.8821 14.572 10.6899 13.955 8.75042 13.955C6.81096 13.955 5.61877 14.572 4.86252 15.3208ZM3.8071 14.2549C4.87163 13.2009 6.45602 12.455 8.75042 12.455C11.0448 12.455 12.6292 13.2009 13.6937 14.2549C14.7397 15.2906 15.2207 16.5607 15.4446 17.5202C15.7658 18.8971 14.6071 19.8987 13.4249 19.8987H4.07591C2.89369 19.8987 1.73504 18.8971 2.05628 17.5202C2.28015 16.5607 2.76117 15.2906 3.8071 14.2549ZM15.3042 11.4955C14.4702 11.4955 13.7006 11.2193 13.0821 10.7533C13.3742 10.3314 13.6054 9.86419 13.7632 9.36432C14.1597 9.75463 14.7039 9.99545 15.3042 9.99545C16.5176 9.99545 17.5012 9.01185 17.5012 7.79851C17.5012 6.58517 16.5176 5.60156 15.3042 5.60156C14.7039 5.60156 14.1597 5.84239 13.7632 6.23271C13.6054 5.73284 13.3741 5.26561 13.082 4.84371C13.7006 4.37777 14.4702 4.10156 15.3042 4.10156C17.346 4.10156 19.0012 5.75674 19.0012 7.79851C19.0012 9.84027 17.346 11.4955 15.3042 11.4955ZM19.9248 19.8987H16.3901C16.7014 19.4736 16.9159 18.969 16.9827 18.3987H19.9248C20.1341 18.3987 20.2991 18.3141 20.3936 18.2112C20.4796 18.1175 20.5169 18.0034 20.4837 17.861C20.2969 17.0607 19.913 16.088 19.1382 15.3208C18.4047 14.5945 17.261 13.9921 15.4231 13.9566C15.2232 13.6945 14.9995 13.437 14.7491 13.1891C14.5144 12.9566 14.262 12.7384 13.9916 12.5362C14.3853 12.4831 14.8044 12.4549 15.2503 12.4549C17.5447 12.4549 19.1291 13.2008 20.1936 14.2549C21.2395 15.2906 21.7206 16.5607 21.9444 17.5202C22.2657 18.8971 21.107 19.8987 19.9248 19.8987Z","resources":"M8.50391 4.25C8.50391 3.83579 8.83969 3.5 9.25391 3.5H15.2777C15.4766 3.5 15.6674 3.57902 15.8081 3.71967L18.2807 6.19234C18.4214 6.333 18.5004 6.52376 18.5004 6.72268V16.75C18.5004 17.1642 18.1646 17.5 17.7504 17.5H16.248V17.4993H14.748V17.5H9.25391C8.83969 17.5 8.50391 17.1642 8.50391 16.75V4.25ZM14.748 19H9.25391C8.01126 19 7.00391 17.9926 7.00391 16.75V6.49854H6.24805C5.83383 6.49854 5.49805 6.83432 5.49805 7.24854V19.75C5.49805 20.1642 5.83383 20.5 6.24805 20.5H13.998C14.4123 20.5 14.748 20.1642 14.748 19.75L14.748 19ZM7.00391 4.99854V4.25C7.00391 3.00736 8.01127 2 9.25391 2H15.2777C15.8745 2 16.4468 2.23705 16.8687 2.659L19.3414 5.13168C19.7634 5.55364 20.0004 6.12594 20.0004 6.72268V16.75C20.0004 17.9926 18.9931 19 17.7504 19H16.248L16.248 19.75C16.248 20.9926 15.2407 22 13.998 22H6.24805C5.00541 22 3.99805 20.9926 3.99805 19.75V7.24854C3.99805 6.00589 5.00541 4.99854 6.24805 4.99854H7.00391Z","insights":"M5.5 3.25C4.25736 3.25 3.25 4.25736 3.25 5.5V18.5C3.25 19.7426 4.25736 20.75 5.5 20.75H18.5001C19.7427 20.75 20.7501 19.7426 20.7501 18.5V5.5C20.7501 4.25736 19.7427 3.25 18.5001 3.25H5.5ZM4.75 5.5C4.75 5.08579 5.08579 4.75 5.5 4.75H18.5001C18.9143 4.75 19.2501 5.08579 19.2501 5.5V18.5C19.2501 18.9142 18.9143 19.25 18.5001 19.25H5.5C5.08579 19.25 4.75 18.9142 4.75 18.5V5.5ZM6.25005 9.7143C6.25005 9.30008 6.58583 8.9643 7.00005 8.9643L17 8.96429C17.4143 8.96429 17.75 9.30008 17.75 9.71429C17.75 10.1285 17.4143 10.4643 17 10.4643L7.00005 10.4643C6.58583 10.4643 6.25005 10.1285 6.25005 9.7143ZM6.25005 14.2857C6.25005 13.8715 6.58583 13.5357 7.00005 13.5357H17C17.4143 13.5357 17.75 13.8715 17.75 14.2857C17.75 14.6999 17.4143 15.0357 17 15.0357H7.00005C6.58583 15.0357 6.25005 14.6999 6.25005 14.2857Z"};
-  var DEFAULTS = {spaceKey:'mosaic', rootPageId:'3961414584', contextPath:'/confluence',
-    pageIds:{home:'3961414584',about:'3981001532',team:'3981001536',resources:'3981001538',insights:'3981001542'}};
+  var DEFAULTS = {spaceKey:'mosaic', rootPageId:'3961414585', contextPath:'/confluence',
+    pageIds:{home:'3961414585',about:'3981001532',team:'3981001536',resources:'3981001538',insights:'3981001542'}};
   var nativeToggle = '.acs-side-bar-toggle,.ia-toggle-button,.expand-collapse-trigger';
   var floating = 'aui-dropdown-menu,.aui-dropdown2,.aui-layer,[role="menu"],[role="listbox"],[role="dialog"]';
   var cfg, state = {active:false,pending:false,pageId:'',isHome:false}, epoch=0, observer, resizeObserver, queued=false;
   var host, topSlot, topButton, toggleTarget, overlay, overlayTimer, overlayTarget, overlayAttrs, focusedBefore;
   var complete=false, checkController, readyBeforeBoot=false, fontMedia, readerTools, readerExport, readerBack, readerSurface, readerSurfaceMarked, readerContent, readerWidget, pageAttributes;
   var marks=new Map(), links=new Map(), compactLinks=new Set(), collapsedHosts=new WeakSet();
-  var fluidMedia=new Map();
+  var fluidMedia=new Map(),fluidContainers=new Map();
   var tooltip, tooltipLink, tooltipDescription, bodyMarker, originalSurface, revealed=false, surfaceDirty=true;
   function meta(name) {
     try { var value=w.AJS && w.AJS.Meta && w.AJS.Meta.get(name); if(value) return String(value); } catch (_) {}
@@ -835,7 +835,7 @@
   function refresh() {
     if(!state.active)return;
     if(forbidden()||pageId()!==state.pageId||(meta('space-key')&&meta('space-key')!==cfg.spaceKey)){destroy();return;}
-    syncNativePage();mountReaderTools();
+    syncNativePage();syncFluidContainers();mountReaderTools();
     if(customEditor())w.MosaicScroll?.destroy();
     else w.MosaicScroll?.mount({root:d.querySelector('[data-mosaic-root]')||d.querySelector('#main-content')});
     var next=d.querySelector('.ia-fixed-sidebar,.acs-side-bar,#sidebar');if(!next){cleanupSidebar();return;}
@@ -903,6 +903,16 @@
     fluidMedia.forEach(function(original,media){if(!eligible.has(media)){restore(media,'data-mosaic-fluid-media',original);fluidMedia.delete(media);}});
     eligible.forEach(function(media){if(!fluidMedia.has(media))fluidMedia.set(media,media.getAttribute('data-mosaic-fluid-media'));media.setAttribute('data-mosaic-fluid-media','true');});
   }
+  function syncFluidContainers() {
+    var eligible=new Set(),root=d.querySelector('[data-mosaic-root]');
+    var content=root?(String(cfg.pageIds[root.getAttribute('data-mosaic-role')])===state.pageId?root:null):d.querySelector('#main-content .wiki-content,#main-content.wiki-content');
+    for(var parent=content?.parentElement;parent&&parent!==d.body;parent=parent.parentElement){
+      if(parent.matches('nav,aside,[role=dialog],[role=menu]'))break;
+      if(Array.from(parent.classList).some(function(name){return /^max-w-screen(?:-[\w-]+)?$/.test(name);}))eligible.add(parent);
+    }
+    fluidContainers.forEach(function(original,element){if(!eligible.has(element)){restore(element,'data-mosaic-fluid-container',original);fluidContainers.delete(element);}});
+    eligible.forEach(function(element){if(!fluidContainers.has(element))fluidContainers.set(element,element.getAttribute('data-mosaic-fluid-container'));if(element.getAttribute('data-mosaic-fluid-container')!=='true')element.setAttribute('data-mosaic-fluid-container','true');});
+  }
   function mountReaderTools() {
     // The shared navBar owns this widget; portal its controls to body so a sticky,
     // transformed or clipped navbar cannot change the viewport edge positioning.
@@ -951,6 +961,11 @@
         if(c.type==='characterData')return !!c.target.parentElement?.closest('#main-content');
         if(c.type==='childList')return Array.from(c.addedNodes).concat(Array.from(c.removedNodes)).some(function(n){return n.nodeType===1&&!n.matches?.('[data-mosaic-owned],.mosaic-native-icon,.mosaic-native-label,.mosaic-native-tooltip,.mosaic-loading-overlay')||n.nodeType===3&&!!c.target.closest?.('#main-content');});
         if(c.type==='attributes'){
+          if(c.attributeName==='class'){
+            var screenCap=function(name){return /^max-w-screen(?:-[\w-]+)?$/.test(name);};
+            var previousCaps=(c.oldValue||'').split(/\s+/).filter(screenCap).sort().join(' '),currentCaps=Array.from(c.target.classList||[]).filter(screenCap).sort().join(' ');
+            if(previousCaps!==currentCaps)return true;
+          }
           if(c.target.id==='editPageLink'&&['href','aria-disabled'].includes(c.attributeName))return true;
           if(c.target.matches?.('img,video')&&c.target.closest('#main-content')&&['width','height','style'].includes(c.attributeName))return true;
           if(c.attributeName==='class'&&c.target===host){var old=(c.oldValue||'').replace(/\bmosaic-native-sidebar\b/g,'').replace(/\s+/g,' ').trim(),next=(c.target.getAttribute('class')||'').replace(/\bmosaic-native-sidebar\b/g,'').replace(/\s+/g,' ').trim();if(old===next)return false;}
@@ -976,7 +991,7 @@
     if(!id||forbidden())return state;var generation=epoch;state.pending=true;
     state.verified=verify(id,meta('space-key'),generation).then(function(ok){if(generation!==epoch)return false;state.pending=false;if(ok)activate(generation);return ok;});return state;
   }
-  function destroy(){epoch++;observer?.disconnect();observer=null;checkController?.abort();checkController=null;hideOverlay();w.MosaicScroll?.destroy();removeReaderTools();syncFluidMedia(null);cleanupSidebar();if(d.body&&bodyMarker!==undefined)restore(d.body,'data-mosaic-host',bodyMarker);bodyMarker=undefined;state.active=false;state.pending=false;
+  function destroy(){epoch++;observer?.disconnect();observer=null;checkController?.abort();checkController=null;hideOverlay();w.MosaicScroll?.destroy();removeReaderTools();syncFluidMedia(null);fluidContainers.forEach(function(original,element){restore(element,'data-mosaic-fluid-container',original);});fluidContainers.clear();cleanupSidebar();if(d.body&&bodyMarker!==undefined)restore(d.body,'data-mosaic-host',bodyMarker);bodyMarker=undefined;state.active=false;state.pending=false;
     if(pageAttributes){Object.keys(pageAttributes).forEach(function(name){restore(d.body,name,pageAttributes[name]);});pageAttributes=null;}
     w.removeEventListener('hashchange',onNavigate);w.removeEventListener('popstate',onNavigate);w.removeEventListener('resize',compact);w.removeEventListener('scroll',hideTooltip,true);w.removeEventListener('pagehide',onPageHide);w.removeEventListener('pageshow',onPageShow);d.removeEventListener('keydown',onKey);d.removeEventListener('load',onStylesheet,true);fontMedia?.removeEventListener?.('change',refreshSurface);fontMedia=null;
   }
@@ -1999,7 +2014,7 @@
     }
     var root = el('section', 'mrs-root'); root.setAttribute('aria-label', 'Mosaic Resources');
     var breadcrumb = add(root, 'nav', 'mrs-breadcrumb'); breadcrumb.setAttribute('aria-label', 'Breadcrumb');
-    var home = add(breadcrumb, 'a', '', 'Home'); home.href = nativePage(config.rootPageId || (config.pages || {}).home || '3961414584');
+    var home = add(breadcrumb, 'a', '', 'Home'); home.href = nativePage(config.rootPageId || (config.pages || {}).home || '3961414585');
     add(breadcrumb, 'span', 'mrs-breadcrumb-divider', '/').setAttribute('aria-hidden', 'true'); add(breadcrumb, 'span', '', 'Resources').setAttribute('aria-current', 'page');
     var hero = add(root, 'div', 'mrs-hero'), image = add(hero, 'img', 'mrs-hero-image'); image.alt = ''; image.width = 800; image.height = 500; image.decoding = 'async'; image.loading = 'eager'; image.setAttribute('fetchpriority', 'high');
     var file = /^mosaic-[a-z0-9-]+\.webp$/.test(config.resourcesBanner || '') ? config.resourcesBanner : 'mosaic-cover-15.webp';
@@ -2194,7 +2209,7 @@
     ];
     function pillars(items){return items.map(function(x){return '<article class="mo-card mo-pillar"><span class="mo-number">'+x[0]+'</span><h3>'+x[1]+'</h3><p>'+x[2]+'</p></article>';}).join('');}
     root.innerHTML='<div class="mo-about-page"><h1 class="mo-sr">About Mosaic</h1>'+
-      '<section class="mo-cube" aria-label="The meaning of Mosaic"><video muted loop playsinline preload="metadata" aria-hidden="true" tabindex="-1"'+(cfg.mode==='preview'&&cfg.previewPoster?' poster="'+esc(cfg.previewPoster)+'"':'')+'><source src="'+esc(cfg.videoUrl||cfg.contextPath+'/download/attachments/'+cfg.attachmentPageId+'/cube.webm?api=v2')+'" type="video/webm"></video>'+
+      '<section class="mo-cube" aria-label="The meaning of Mosaic"><video muted loop playsinline preload="metadata" aria-hidden="true" tabindex="-1"'+(cfg.mode==='preview'&&cfg.previewPoster?' poster="'+esc(cfg.previewPoster)+'"':'')+'><source src="'+esc(cfg.videoUrl||cfg.contextPath+'/download/attachments/'+cfg.attachmentPageId+'/hero-cube.webm?api=v2')+'" type="video/webm"></video>'+
       '<div class="mo-cube-copy"><p class="mo-eyebrow">The foundations of our future</p><dl class="mo-acronym">'+acronym.map(function(row){return '<div><dt>'+row[0]+'</dt><dd>'+row[1]+(row[2]?' <small>'+row[2]+'</small>':'')+'</dd></div>';}).join('')+'</dl></div><button type="button" class="mo-video-toggle" hidden>Play animation</button><span class="mo-video-note" role="status"></span></section>'+
       '<div class="mo-about-body"><section class="mo-section mo-intro-split"><div><p class="mo-eyebrow">About us</p><h2>Powering the future<br>of custody.</h2></div><div><p>MOSAIC brings together modular technology and data-driven innovation to transform the custody lifecycle.</p><p>Our aim is a connected platform: reusable utilities, consistent data and coordinated workflows that help teams respond to change.</p></div></section>'+
       '<section class="mo-section"><div class="mo-section-top"><h2>Why Mosaic matters</h2></div><div class="mo-grid">'+pillars(challenges)+'</div></section>'+
@@ -2236,7 +2251,7 @@
     function play(){if(failed)return;var promise=v.play();if(promise&&promise.catch)promise.catch(function(){label();});}
     function media(){wanted=!reduced.matches;if(wanted&&!d.hidden)play();else v.pause();label();}
     function visibility(){if(d.hidden)v.pause();else if(wanted)play();}
-    function unavailable(){failed=true;b.hidden=true;note.textContent=cfg.mode==='preview'?'Static reference · live cube.webm playback requires Confluence.':'Animation unavailable. You can still explore Mosaic below.';}
+    function unavailable(){failed=true;b.hidden=true;note.textContent=cfg.mode==='preview'?'Static reference · live hero-cube.webm playback requires Confluence.':'Animation unavailable. You can still explore Mosaic below.';}
     v.muted=true;v.loop=true;v.playsInline=true;v.autoplay=wanted;b.hidden=false;b.addEventListener('click',function(){wanted=v.paused;if(wanted)play();else v.pause();});v.addEventListener('play',label);v.addEventListener('pause',label);v.addEventListener('error',unavailable);v.querySelector('source').addEventListener('error',unavailable);reduced.addEventListener('change',media);d.addEventListener('visibilitychange',visibility);cleanup.push(function(){v.pause();reduced.removeEventListener('change',media);d.removeEventListener('visibilitychange',visibility);});if(wanted)play();label();}
   function resources(token,r){if(r.path==='/search'&&r.q){root.innerHTML=bread('Resources')+'<h1>Search resources</h1>'+searchForm(r.q,'Search resources')+'<a class="mo-link" href="#/">Back to resources</a><div id="mo-collection"></div>';bindSearch();collection(root.querySelector('#mo-collection'),token,r,cfg.pages.resources);return;}root.innerHTML='';var component=w.MosaicResources.mount(root,{config:cfg,api:api,signal:controller.signal,onSearch:function(q){navigate('/search?q='+encodeURIComponent(q));}});cleanup.push(function(){component.destroy();});}
   function insights(){root.innerHTML='';var component=w.MosaicInsights.mount(root,{config:cfg,api:api,signal:controller.signal});cleanup.push(function(){component.destroy();});}
