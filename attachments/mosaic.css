@@ -99,6 +99,12 @@ html:not([data-color-mode])[data-theme="dark"],body:not([data-color-mode])[data-
 .mosaic-export-status{flex-basis:100%;color:var(--mosaic-theme-muted,#61758c)}
 .mosaic-export-status[data-error=true]{color:var(--mosaic-theme-danger,#b42318)}
 .mosaic-native-reader-tools{font-family:"Citi-Sans-Text",sans-serif;margin-block:12px 20px}
+/* Reserve only the compact rail's footprint. Native content remains in place. */
+@media(min-width:761px) and (min-height:481px){body[data-mosaic-native-page=true] .mosaic-article-surface{box-sizing:border-box;padding-right:112px!important}}
+@media(max-width:760px),(max-height:480px){body[data-mosaic-native-page=true] .mosaic-article-surface{padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))!important}}
+@media(max-width:760px),(max-height:480px){body[data-mosaic-native-page=true]:has(.mosaic-article-rail) #mosaic-back-to-top{bottom:calc(104px + env(safe-area-inset-bottom,0px))!important}}
+@media print{body[data-mosaic-native-page=true]{--mosaic-theme-text:#17385e!important;--mosaic-theme-muted:#5b6c7e!important;--mosaic-theme-surface:#fff!important;--mosaic-theme-page:#fff!important;--mosaic-theme-subtle:#f0f5f9!important;--mosaic-theme-border:#d5e1ee!important;--mosaic-theme-link:#255be3!important;color-scheme:light;background:#fff!important}}
+@media print{body[data-mosaic-native-page=true] :is(#header,#sidebar,.ia-fixed-sidebar,.acs-side-bar,.fixture-navbar,.preview-strip,#main-header .content-navigation,.mosaic-native-results-link){display:none!important}body[data-mosaic-native-page=true] .mosaic-article-surface{padding:0!important;border-radius:0!important;box-shadow:none!important}body[data-mosaic-native-page=true] :is(#main,.fixture-layout){display:block!important;margin:0!important;width:auto!important}body[data-mosaic-native-page=true] :is(#content,#main-content,.wiki-content,.native-page){background:#fff!important;color:#17385e!important}body[data-mosaic-native-page=true] :is(#title-heading,#title-text){color:#17385e!important}}
 .mosaic-native-edit-link,.mosaic-native-results-link{display:inline-block;font:14px/1.4 "Citi-Sans-Text",sans-serif;color:var(--mosaic-theme-link,#255be3);text-decoration:none;padding:8px 0;margin-right:20px}
 .mosaic-native-edit-link:focus-visible,.mosaic-native-results-link:focus-visible{outline:2px solid var(--mosaic-theme-focus,#255be3);outline-offset:2px}
 /* Verified native readers only. Host activation excludes native authoring;
@@ -426,9 +432,14 @@ body[data-mosaic-host=active] :is(#main,#main-content):has([data-mosaic-root]){b
 @media(prefers-reduced-motion:reduce){:is(#mosaic,[data-mosaic-add-page]) .mo-choice .mo-choice-chevron{transition:none}}
 @media print{[data-mosaic-add-page]{display:none!important}}
 
-/* Style the existing native page in place. No reader, second title, or child-page layout. */
-body[data-mosaic-host=active][data-mosaic-native-page=true] :is(#content,#main-content,.wiki-content,.pageSection,.contentLayout2){box-sizing:border-box;min-width:0;max-width:none!important}
-body[data-mosaic-host=active][data-mosaic-native-page=true] :is(#main-content,.wiki-content){width:100%!important}
+/* Style the existing native page in place. No reader, second title, or child-page layout.
+ * WCSpedia's fluid reader removes its document-body cap. Apply that pattern to
+ * native content wrappers without changing the sidebar's #main offsets or
+ * authored multi-column ratios. The action rail reserves space in host.css. */
+body[data-mosaic-host=active][data-mosaic-native-page=true] :is(#main,#content,#main-content,.wiki-content,.pageSection,.contentLayout,.contentLayout2,.columnLayout,.columnLayout>.cell,.columnLayout>.cell>.innerCell){box-sizing:border-box;min-width:0;max-width:none!important}
+body[data-mosaic-host=active][data-mosaic-native-page=true] #content{width:auto!important}
+body[data-mosaic-host=active][data-mosaic-native-page=true] :is(#main-content,.wiki-content,.contentLayout,.contentLayout2,.columnLayout,.columnLayout>.cell:only-child,.columnLayout>.cell:only-child>.innerCell){width:100%!important}
+body[data-mosaic-host=active][data-mosaic-native-page=true] :is(#main-content>.wiki-content,#main-content.wiki-content){margin-inline:0!important}
 body[data-mosaic-native-page=true] #main-content{font:17px/1.75 'Citi-Sans-Text',Arial,sans-serif;color:var(--mosaic-theme-text);background:var(--mosaic-theme-surface);overflow-wrap:anywhere}
 body[data-mosaic-native-page=true] #title-heading,body[data-mosaic-native-page=true] #title-text{font:400 clamp(34px,4vw,48px)/1.2 'Citi-Sans-Display','Citi-Sans-Text',Arial,sans-serif;color:var(--mosaic-theme-text);letter-spacing:-.025em;max-width:none;overflow-wrap:anywhere}
 body[data-mosaic-native-page=true] #title-heading{margin:20px 0 24px}
@@ -440,7 +451,12 @@ body[data-mosaic-native-page=true] #main-content :is(p,ul,ol,blockquote,table,pr
 body[data-mosaic-native-page=true] #main-content a{color:var(--mosaic-theme-link);text-underline-offset:3px}
 body[data-mosaic-native-page=true] #main-content a:focus-visible{outline:2px solid var(--mosaic-theme-focus);outline-offset:3px;border-radius:3px}
 body[data-mosaic-native-page=true] #main-content :is(img,video){max-width:100%;height:auto;border-radius:12px}
-body[data-mosaic-native-page=true] #main-content table{border-collapse:collapse;max-width:100%;width:100%;table-layout:fixed;font-size:15px}
+/* Host verifies image-only content using child nodes, because CSS :only-child
+ * cannot distinguish an inline icon beside plain text. Authored dimensions,
+ * linked thumbnails and native image controls keep their own sizing. */
+body[data-mosaic-host=active][data-mosaic-native-page=true] #main-content :is(img,video)[data-mosaic-fluid-media=true]{display:block;width:100%;max-width:100%;height:auto}
+body[data-mosaic-native-page=true] #main-content table{box-sizing:border-box;border-collapse:collapse;max-width:100%!important;width:100%!important;table-layout:fixed;font-size:15px}
+body[data-mosaic-native-page=true] #main-content .table-wrap{box-sizing:border-box;min-width:0;max-width:100%;overflow-x:auto}
 body[data-mosaic-native-page=true] #main-content :is(td,th){padding:12px 16px;border:1px solid var(--mosaic-theme-border);text-align:left;overflow-wrap:anywhere}
 body[data-mosaic-native-page=true] #main-content th{font-weight:600;background:var(--mosaic-theme-subtle)}
 body[data-mosaic-native-page=true] #main-content pre{max-width:100%;overflow:auto;padding:20px;border-radius:12px;white-space:pre;overflow-wrap:normal}
@@ -494,4 +510,27 @@ body[data-mosaic-host=active] #mosaic{width:100%;max-width:none}
 :is(#mosaic,body) .mosaic-export-menu strong{display:block;color:inherit;font-size:14px;font-weight:600;line-height:1.4}
 :is(#mosaic,body) .mosaic-export-menu small{display:block;margin-top:3px;color:var(--mosaic-theme-muted,#64748b);font-size:12px;line-height:1.4}
 .mosaic-export-copy-buffer{position:fixed;left:-10000px;top:0;width:1px;height:1px;opacity:0}
-@media print{.mosaic-export-toolbar,.mosaic-export-menu,.mosaic-export-copy-buffer{display:none!important}}
+/* Native article rail: content spacing is owned by the verified host surface. */
+:is(#mosaic,body) .mosaic-article-rail{position:fixed;z-index:2800;right:24px;top:50%;display:flex;flex-direction:column;align-items:center;gap:4px;box-sizing:border-box;width:64px;margin:0;padding:8px;border:1px solid #ffffff14;border-radius:24px;background:#0f1632;color:#fff;box-shadow:0 12px 32px #0f16322b;transform:translateY(-50%);overflow:visible;font:14px/1.4 "Citi-Sans-Text",Arial,sans-serif}
+:is(#mosaic,body) .mosaic-article-rail .mosaic-export-toolbar{display:contents}
+:is(#mosaic,body) .mosaic-article-rail>.mosaic-native-edit-link,:is(#mosaic,body) .mosaic-article-rail>a,:is(#mosaic,body) .mosaic-article-rail .mosaic-export-toolbar button{position:relative;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;flex:0 0 48px;width:48px;min-width:48px;height:48px;min-height:48px;margin:0;padding:0;gap:0;border:0;border-radius:14px;background:transparent;color:#fff;font:inherit;text-decoration:none;cursor:pointer}
+:is(#mosaic,body) .mosaic-article-rail>a:hover,:is(#mosaic,body) .mosaic-article-rail .mosaic-export-toolbar button:hover{background:#ffffff18;color:#fff}
+:is(#mosaic,body) .mosaic-article-rail>a:focus-visible,:is(#mosaic,body) .mosaic-article-rail .mosaic-export-toolbar button:focus-visible{outline:2px solid #fff;outline-offset:2px;background:#ffffff18}
+:is(#mosaic,body) .mosaic-article-rail .mosaic-export-toolbar button[aria-disabled=true]{cursor:wait}
+:is(#mosaic,body) .mosaic-article-rail .mosaic-export-toolbar button[data-export-state=success]{color:#fff}
+:is(#mosaic,body) .mosaic-article-rail>a>svg,:is(#mosaic,body) .mosaic-article-rail .mosaic-export-toolbar svg{display:block;flex:none;width:20px!important;height:20px!important;max-width:20px;max-height:20px;margin:0;padding:0;fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round}
+:is(#mosaic,body) .mosaic-article-rail>a>svg path{fill:none;stroke:currentColor}
+:is(#mosaic,body) .mosaic-article-rail .mosaic-export-feedback-icon{flex:0 0 20px;width:20px;height:20px}
+:is(#mosaic,body) .mosaic-article-rail .mosaic-rail-label,:is(#mosaic,body) .mosaic-article-rail .mosaic-export-feedback-label{position:absolute;right:calc(100% + 16px);top:50%;width:max-content;max-width:240px;padding:8px 12px;border:1px solid #ffffff24;border-radius:9px;background:#0f1632;color:#fff;box-shadow:0 4px 16px #0f163222;font-size:13px;line-height:1.4;white-space:nowrap;pointer-events:none;opacity:0;visibility:hidden;transform:translate(4px,-50%);transition:opacity .16s ease,transform .16s ease,visibility .16s}
+:is(#mosaic,body) .mosaic-article-rail>a:is(:hover,:focus-visible) .mosaic-rail-label,:is(#mosaic,body) .mosaic-article-rail .mosaic-export-toolbar button:is(:hover,:focus-visible,[data-export-state=pending],[data-export-state=success]) .mosaic-export-feedback-label{opacity:1;visibility:visible;transform:translate(0,-50%)}
+:is(#mosaic,body) .mosaic-article-rail .mosaic-export-status:is([data-error],[data-warning]){position:absolute;right:calc(100% + 16px);top:50%;box-sizing:border-box;width:min(360px,calc(100vw - 120px));max-height:calc(100vh - 48px);margin:0;padding:14px 16px;overflow:auto;border:1px solid var(--mosaic-theme-border,#dce6ef);border-radius:12px;background:var(--mosaic-theme-surface,#fff);box-shadow:0 8px 32px #0f163222;color:var(--mosaic-theme-text,#17385e);transform:translateY(-50%)}
+:is(#mosaic,body) .mosaic-article-rail .mosaic-export-status[data-error]{color:var(--mosaic-theme-danger,#aa2424)}
+@media(max-width:760px),(max-height:480px){
+  :is(#mosaic,body) .mosaic-article-rail{top:auto;right:auto;bottom:calc(16px + env(safe-area-inset-bottom,0px));left:50%;flex-direction:row;width:max-content;max-width:calc(100vw - 24px);gap:4px;padding:8px;border-radius:22px;transform:translateX(-50%)}
+  :is(#mosaic,body) .mosaic-article-rail>.mosaic-native-edit-link,:is(#mosaic,body) .mosaic-article-rail>a,:is(#mosaic,body) .mosaic-article-rail .mosaic-export-toolbar button{position:static;flex-basis:44px;width:44px;min-width:44px;height:44px;min-height:44px}
+  :is(#mosaic,body) .mosaic-article-rail .mosaic-rail-label,:is(#mosaic,body) .mosaic-article-rail .mosaic-export-feedback-label{top:auto;right:auto;bottom:calc(100% + 12px);left:50%;max-width:calc(100vw - 40px);transform:translate(-50%,4px)}
+  :is(#mosaic,body) .mosaic-article-rail>a:is(:hover,:focus-visible) .mosaic-rail-label,:is(#mosaic,body) .mosaic-article-rail .mosaic-export-toolbar button:is(:hover,:focus-visible,[data-export-state=pending],[data-export-state=success]) .mosaic-export-feedback-label{transform:translate(-50%,0)}
+  :is(#mosaic,body) .mosaic-article-rail .mosaic-export-status:is([data-error],[data-warning]){top:auto;right:auto;bottom:calc(100% + 12px);left:50%;width:min(360px,calc(100vw - 24px));max-height:calc(100vh - 130px);transform:translateX(-50%)}
+}
+@media(prefers-reduced-motion:reduce){:is(#mosaic,body) .mosaic-article-rail .mosaic-rail-label,:is(#mosaic,body) .mosaic-article-rail .mosaic-export-feedback-label{transition:none}}
+@media print{.mosaic-article-rail,.mosaic-export-toolbar,.mosaic-export-menu,.mosaic-export-copy-buffer{display:none!important}}
