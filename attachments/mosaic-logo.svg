@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 306 76" role="img" aria-label="Mosaic" fill="none">
+  <path d="M8 22 22 14 36 22 36 38 22 46 8 38Z" fill="#255BE3"/>
+  <path d="M40 22 54 14 68 22 68 38 54 46 40 38Z" fill="#16BCD4"/>
+  <path d="M24 42 38 34 52 42 52 58 38 66 24 58Z" fill="#73D9EF"/>
+  <path d="M8 42 22 50 22 66 8 58Z" fill="#255BE3"/>
+  <path d="M54 50 68 42 68 58 54 66Z" fill="#16BCD4"/>
+  <text x="88" y="52" fill="currentColor" font-family="Citi-Sans-Display,Arial,sans-serif" font-size="35" font-weight="500" letter-spacing="2.4">MOSAIC</text>
+</svg>

@@ -12,6 +12,20 @@
   function check(signal){if(signal&&signal.aborted)throw abort();}
   function id(value){if(typeof value!=='string'||!/^\d{1,20}$/.test(value.trim()))return '';return value.trim().replace(/^0+(?=\d)/,'');}
   function first(value){return typeof value==='string'?value.trim():Array.isArray(value)?value.filter(function(x){return typeof x==='string'&&x.trim();}).map(function(x){return x.trim();})[0]||'':'';}
+  function contact(value,kind){
+    var values=Array.isArray(value)?value:[value];
+    for(var i=0;i<values.length;i++){
+      if(typeof values[i]!=='string'||/[\x00-\x1f\x7f]/.test(values[i]))continue;
+      var item=values[i].trim();
+      if(kind==='email'&&item.length<=254&&/^[a-z0-9][a-z0-9._+-]{0,63}@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i.test(item)&&!item.includes('..')&&!item.includes('.@'))return item;
+      if(kind==='soeid'&&/^[a-z0-9]{1,32}$/i.test(item))return item;
+      if(kind==='phone'&&item.length<=80){
+        var parts=item.match(/^(\+?[\d(][\d ().-]*?)(?:\s*(?:;ext=|ext\.?\s*|extension\s*|x\s*)(\d{1,8}))?$/i);
+        if(parts){var digits=parts[1].replace(/\D/g,'');if(digits.length>=7&&digits.length<=15)return (parts[1][0]==='+'?'+':'')+digits+(parts[2]?';ext='+parts[2]:'');}
+      }
+    }
+    return '';
+  }
   function number(value,fallback,min,max){return Number.isInteger(value)&&value>=min&&value<=max?value:fallback;}
   function issue(code,message,managerId){var result={code:code,message:message};if(managerId)result.managerId=managerId;return result;}
   function create(config){
@@ -90,6 +104,7 @@
       if(rawManager&&!manager)warnings.push(issue('INVALID_MANAGER','A directory record has an invalid manager GEID.'));
       if(!manager&&ancestors.length)manager=ancestors[ancestors.length-1].id;
       var person={id:personId,name:first(doc.name),title:first(doc.jobtitle),location:first(doc.location),managerId:manager,ancestors:ancestors,photoUrl:photoFor(rawId)};
+      ['email','soeid','phone'].forEach(function(kind){var value=contact(doc[kind],kind);if(value)person[kind]=value;});
       personIssues.set(person,warnings);return person;
     }
     async function getPerson(geid,args){
@@ -195,6 +210,17 @@
   var mounted = new WeakMap();
   function id(value) { var s = value == null ? '' : String(value).trim(); return /^\d+$/.test(s) ? s.replace(/^0+(?=\d)/, '') : ''; }
   function text(value) { return typeof value === 'string' ? value.trim() : ''; }
+  function contact(value,kind) {
+    if(typeof value!=='string'||/[\x00-\x1f\x7f]/.test(value))return '';
+    var item=value.trim();
+    if(kind==='email'&&item.length<=254&&/^[a-z0-9][a-z0-9._+-]{0,63}@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i.test(item)&&!item.includes('..')&&!item.includes('.@'))return item;
+    if(kind==='soeid'&&/^[a-z0-9]{1,32}$/i.test(item))return item;
+    if(kind==='phone'&&item.length<=80){
+      var parts=item.match(/^(\+?[\d(][\d ().-]*?)(?:\s*(?:;ext=|ext\.?\s*|extension\s*|x\s*)(\d{1,8}))?$/i);
+      if(parts){var digits=parts[1].replace(/\D/g,'');if(digits.length>=7&&digits.length<=15)return (parts[1][0]==='+'?'+':'')+digits+(parts[2]?';ext='+parts[2]:'');}
+    }
+    return '';
+  }
   function displayName(value) { var name = text(value), parts = name.split(',').map(function (part) { return part.trim(); }); return parts.length === 2 && parts[0] && parts[1] ? parts[1] + ' ' + parts[0] : name; }
   function initials(name) { var words = name.trim().split(/\s+/).filter(Boolean); return words.length ? (Array.from(words[0])[0] + (words.length > 1 ? Array.from(words[words.length - 1])[0] : '')).toUpperCase() : '?'; }
   function photoURL(value, config) {
@@ -224,6 +250,11 @@
     var state = null, nodes = [], nodeById = new Map(), frame = null, resizeObserver = null, centerOnLayout = false;
     function el(tag, cls, value) { var n = d.createElement(tag); if (cls) n.className = cls; if (value !== undefined) n.textContent = value; return n; }
     function add(parent, tag, cls, value) { var n = el(tag, cls, value); parent.appendChild(n); return n; }
+    function contactIcon(label) {
+      var svg=d.createElementNS('http://www.w3.org/2000/svg','svg'),path=d.createElementNS('http://www.w3.org/2000/svg','path');
+      svg.classList.add('mt-contact-icon');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');svg.setAttribute('focusable','false');
+      path.setAttribute('d',label==='Email'?'M3 5h18v14H3V5Zm0 1 9 7 9-7':label==='Chat'?'M4 4h16v13H9l-5 4V4Z':'m6 3-3 3c0 8 7 15 15 15l3-3-5-4-3 2c-3-1-5-3-6-6l2-3-3-4Z');svg.appendChild(path);return svg;
+    }
     function retry(parent) { var n = add(parent, 'button', 'mt-button', 'Try again'); n.type = 'button'; n.dataset.action = 'retry'; return n; }
     function on(node, event, fn, capture) { node.addEventListener(event, fn, capture); listeners.push(function () { node.removeEventListener(event, fn, capture); }); }
     function personName(p) { return p.name || 'Person ' + p.id; }
@@ -248,7 +279,7 @@
       if (!result || id(result.rootId) !== rootId || !Array.isArray(result.people) || !Array.isArray(result.ancestors)) throw new Error('The people directory returned an unexpected team response.');
       var all = new Map(), ancestorIds = new Set(), ancestors = [], parent = new Map(), children = new Map(), notices = [], complete = result.complete === true;
       function issue(message) { complete = false; if (!notices.includes(message)) notices.push(message); }
-      function copy(p) { if (!p || !id(p.id)) return null; return {id:id(p.id),name:displayName(p.name),title:text(p.title),location:text(p.location),managerId:id(p.managerId),photoUrl:photoURL(p.photoUrl, config)}; }
+      function copy(p) { if (!p || !id(p.id)) return null; return {id:id(p.id),name:displayName(p.name),title:text(p.title),location:text(p.location),managerId:id(p.managerId),photoUrl:photoURL(p.photoUrl, config),email:contact(p.email,'email'),soeid:contact(p.soeid,'soeid'),phone:contact(p.phone,'phone')}; }
       result.people.forEach(function (p) { var person = copy(p); if (person) all.set(person.id, person); else issue('A directory record could not be displayed.'); });
       if (!all.has(rootId)) throw new Error('The directory response did not include the configured team lead.');
       result.ancestors.forEach(function (p) { var person = copy(p); if (person && !all.has(person.id)) { all.set(person.id, person); ancestorIds.add(person.id); ancestors.push(person); } });
@@ -315,10 +346,15 @@
       var manager = state.all.get(state.parent.get(person.id)); card.setAttribute('aria-label', personName(person) + (manager ? '. Reports to ' + personName(manager) + '.' : '.'));
       if (person.id === rootId) card.dataset.root = 'true';
       var avatar = add(card, 'span', 'mt-avatar'); add(avatar, 'span', 'mt-initials', initials(personName(person))).setAttribute('aria-hidden', 'true');
-      if (person.photoUrl) { var img = add(avatar, 'img', 'mt-photo'); img.alt = ''; img.loading = 'lazy'; img.decoding = 'async'; img.referrerPolicy = 'no-referrer'; img.src = person.photoUrl; }
+      if (person.photoUrl) { var img = add(avatar, 'img', 'mt-photo'); img.alt = ''; img.width = 72; img.height = 72; img.loading = 'lazy'; img.decoding = 'async'; img.referrerPolicy = 'no-referrer'; img.src = person.photoUrl; }
       var copy = add(card, 'div', 'mt-person-copy'); add(copy, 'span', 'mt-person-name', personName(person));
       if (person.title) add(copy, 'span', 'mt-person-title', person.title);
       if (person.location) add(copy, 'span', 'mt-person-location', person.location);
+      var contacts=[];
+      if(person.email)contacts.push({label:'Email',href:'mailto:'+encodeURIComponent(person.email).replace(/%40/g,'@')});
+      if(person.soeid)contacts.push({label:'Chat',href:'msteams://chat/0/0?users='+person.soeid+'@citi.com'});
+      if(person.phone)contacts.push({label:'Phone',href:'tel:'+person.phone});
+      if(contacts.length){var actions=add(card,'div','mt-contact-actions');contacts.forEach(function(item){var link=add(actions,'a','mt-contact');link.appendChild(contactIcon(item.label));add(link,'span','',item.label);link.href=item.href;link.setAttribute('aria-label',item.label+' '+personName(person));});}
       return card;
     }
     function renderTree() {
@@ -327,7 +363,7 @@
       var fragment = d.createDocumentFragment(), pending = state.roots.slice().reverse().map(function (personId) { return {id:personId,depth:0}; });
       while (pending.length) {
         var item = pending.pop(), person = state.all.get(item.id), card = personCard(person);
-        var node = {id:item.id,person:person,card:card,depth:item.depth,width:220,height:172,x:0,y:0,subtreeWidth:0,index:nodes.length};
+        var node = {id:item.id,person:person,card:card,depth:item.depth,width:220,height:232,x:0,y:0,subtreeWidth:0,index:nodes.length};
         card.dataset.depth = String(item.depth); nodes.push(node); nodeById.set(item.id, node); fragment.appendChild(card);
         var children = state.children.get(item.id) || []; for (var i = children.length - 1; i >= 0; i--) pending.push({id:children[i],depth:item.depth + 1});
       }
@@ -336,7 +372,7 @@
     function layout() {
       if (destroyed || !state || body.hidden || !nodes.length) return;
       var levelHeights = [], levelGaps = [], levelY = [], gap = 28, padding = 24;
-      nodes.forEach(function (node) { node.height = node.card.offsetHeight || 172; levelHeights[node.depth] = Math.max(levelHeights[node.depth] || 0, node.height); levelGaps[node.depth] = 44; });
+      nodes.forEach(function (node) { node.height = node.card.offsetHeight || 232; levelHeights[node.depth] = Math.max(levelHeights[node.depth] || 0, node.height); levelGaps[node.depth] = 44; });
       for (var i = nodes.length - 1; i >= 0; i--) {
         var node = nodes[i], children = state.children.get(node.id) || [], total = 0;
         children.forEach(function (childId) { total += nodeById.get(childId).subtreeWidth; });
@@ -377,7 +413,7 @@
     on(root, 'error', function (event) { if (event.target && event.target.classList && event.target.classList.contains('mt-photo')) event.target.remove(); else if (event.target === heroImage && hero) hero.hidden = true; }, true);
     on(stage, 'keydown', function (event) {
       if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
-      var card = event.target.closest('.mt-card'); if (!card || !stage.contains(card)) return;
+      var card = event.target.closest('.mt-card'); if (!card || event.target !== card || !stage.contains(card)) return;
       var node = nodeById.get(card.dataset.person), next;
       if (event.key === 'ArrowLeft') next = nodeById.get(state.parent.get(node.id));
       else if (event.key === 'ArrowRight') next = nodeById.get((state.children.get(node.id) || [])[0]);
