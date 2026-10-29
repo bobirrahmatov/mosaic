@@ -99,12 +99,20 @@ html:not([data-color-mode])[data-theme="dark"],body:not([data-color-mode])[data-
 .mosaic-export-status{flex-basis:100%;color:var(--mosaic-theme-muted,#61758c)}
 .mosaic-export-status[data-error=true]{color:var(--mosaic-theme-danger,#b42318)}
 .mosaic-native-reader-tools{font-family:"Citi-Sans-Text",sans-serif;margin-block:12px 20px}
-/* Reserve only the compact rail's footprint. Native content remains in place. */
-@media(min-width:761px) and (min-height:481px){body[data-mosaic-native-page=true] .mosaic-article-surface{box-sizing:border-box;padding-right:112px!important}}
-@media(max-width:760px),(max-height:480px){body[data-mosaic-native-page=true] .mosaic-article-surface{padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))!important}}
-@media(max-width:760px),(max-height:480px){body[data-mosaic-native-page=true]:has(.mosaic-article-rail) #mosaic-back-to-top{bottom:calc(104px + env(safe-area-inset-bottom,0px))!important}}
+/* The flush-right rail is 64px wide. Native readers keep a 24px content gap;
+ * custom pages reserve its width outside their surface so a full-bleed hero
+ * does not acquire an inner gutter. Host owns this temporary surface marker. */
+@media(min-width:761px) and (min-height:481px){
+  body[data-mosaic-native-page=true] .mosaic-article-surface{box-sizing:border-box;padding-right:88px!important}
+  body[data-mosaic-host=active] #mosaic.mosaic-article-surface{width:calc(100% - 64px)!important;margin-left:auto!important;margin-right:64px!important}
+}
+@media(max-width:760px),(max-height:480px){
+  body[data-mosaic-host=active] .mosaic-article-surface{padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))!important}
+  body[data-mosaic-host=active]:has(.mosaic-article-rail) #mosaic-back-to-top{bottom:calc(104px + env(safe-area-inset-bottom,0px))!important}
+}
 @media print{body[data-mosaic-native-page=true]{--mosaic-theme-text:#17385e!important;--mosaic-theme-muted:#5b6c7e!important;--mosaic-theme-surface:#fff!important;--mosaic-theme-page:#fff!important;--mosaic-theme-subtle:#f0f5f9!important;--mosaic-theme-border:#d5e1ee!important;--mosaic-theme-link:#255be3!important;color-scheme:light;background:#fff!important}}
-@media print{body[data-mosaic-native-page=true] :is(#header,#sidebar,.ia-fixed-sidebar,.acs-side-bar,.fixture-navbar,.preview-strip,#main-header .content-navigation,.mosaic-native-results-link){display:none!important}body[data-mosaic-native-page=true] .mosaic-article-surface{padding:0!important;border-radius:0!important;box-shadow:none!important}body[data-mosaic-native-page=true] :is(#main,.fixture-layout){display:block!important;margin:0!important;width:auto!important}body[data-mosaic-native-page=true] :is(#content,#main-content,.wiki-content,.native-page){background:#fff!important;color:#17385e!important}body[data-mosaic-native-page=true] :is(#title-heading,#title-text){color:#17385e!important}}
+@media print{body[data-mosaic-host=active] :is(#header,#sidebar,.ia-fixed-sidebar,.acs-side-bar,.fixture-navbar,.preview-strip,#main-header .content-navigation,.mosaic-native-results-link){display:none!important}body[data-mosaic-native-page=true] .mosaic-article-surface{padding:0!important;border-radius:0!important;box-shadow:none!important}body[data-mosaic-host=active] :is(#main,.fixture-layout){display:block!important;margin:0!important;width:auto!important}body[data-mosaic-native-page=true] :is(#content,#main-content,.wiki-content,.native-page){background:#fff!important;color:#17385e!important}body[data-mosaic-native-page=true] :is(#title-heading,#title-text){color:#17385e!important}}
+@media print{body[data-mosaic-host=active] .mosaic-article-surface{padding:0!important}body[data-mosaic-host=active] #mosaic.mosaic-article-surface{width:100%!important;margin:0!important}}
 .mosaic-native-edit-link,.mosaic-native-results-link{display:inline-block;font:14px/1.4 "Citi-Sans-Text",sans-serif;color:var(--mosaic-theme-link,#255be3);text-decoration:none;padding:8px 0;margin-right:20px}
 .mosaic-native-edit-link:focus-visible,.mosaic-native-results-link:focus-visible{outline:2px solid var(--mosaic-theme-focus,#255be3);outline-offset:2px}
 /* Verified native readers only. Host activation excludes native authoring;
@@ -511,7 +519,7 @@ body[data-mosaic-host=active] #mosaic{width:100%;max-width:none}
 :is(#mosaic,body) .mosaic-export-menu small{display:block;margin-top:3px;color:var(--mosaic-theme-muted,#64748b);font-size:12px;line-height:1.4}
 .mosaic-export-copy-buffer{position:fixed;left:-10000px;top:0;width:1px;height:1px;opacity:0}
 /* Native article rail: content spacing is owned by the verified host surface. */
-:is(#mosaic,body) .mosaic-article-rail{position:fixed;z-index:2800;right:24px;top:50%;display:flex;flex-direction:column;align-items:center;gap:4px;box-sizing:border-box;width:64px;margin:0;padding:8px;border:1px solid #ffffff14;border-radius:24px;background:#0f1632;color:#fff;box-shadow:0 12px 32px #0f16322b;transform:translateY(-50%);overflow:visible;font:14px/1.4 "Citi-Sans-Text",Arial,sans-serif}
+:is(#mosaic,body) .mosaic-article-rail{position:fixed;z-index:2800;right:0;top:50%;display:flex;flex-direction:column;align-items:center;gap:4px;box-sizing:border-box;width:64px;margin:0;padding:8px;border:1px solid #ffffff14;border-right:0;border-radius:24px 0 0 24px;background:#0f1632;color:#fff;box-shadow:0 12px 32px #0f16322b;transform:translateY(-50%);overflow:visible;font:14px/1.4 "Citi-Sans-Text",Arial,sans-serif}
 :is(#mosaic,body) .mosaic-article-rail .mosaic-export-toolbar{display:contents}
 :is(#mosaic,body) .mosaic-article-rail>.mosaic-native-edit-link,:is(#mosaic,body) .mosaic-article-rail>a,:is(#mosaic,body) .mosaic-article-rail .mosaic-export-toolbar button{position:relative;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;flex:0 0 48px;width:48px;min-width:48px;height:48px;min-height:48px;margin:0;padding:0;gap:0;border:0;border-radius:14px;background:transparent;color:#fff;font:inherit;text-decoration:none;cursor:pointer}
 :is(#mosaic,body) .mosaic-article-rail>a:hover,:is(#mosaic,body) .mosaic-article-rail .mosaic-export-toolbar button:hover{background:#ffffff18;color:#fff}
@@ -526,7 +534,7 @@ body[data-mosaic-host=active] #mosaic{width:100%;max-width:none}
 :is(#mosaic,body) .mosaic-article-rail .mosaic-export-status:is([data-error],[data-warning]){position:absolute;right:calc(100% + 16px);top:50%;box-sizing:border-box;width:min(360px,calc(100vw - 120px));max-height:calc(100vh - 48px);margin:0;padding:14px 16px;overflow:auto;border:1px solid var(--mosaic-theme-border,#dce6ef);border-radius:12px;background:var(--mosaic-theme-surface,#fff);box-shadow:0 8px 32px #0f163222;color:var(--mosaic-theme-text,#17385e);transform:translateY(-50%)}
 :is(#mosaic,body) .mosaic-article-rail .mosaic-export-status[data-error]{color:var(--mosaic-theme-danger,#aa2424)}
 @media(max-width:760px),(max-height:480px){
-  :is(#mosaic,body) .mosaic-article-rail{top:auto;right:auto;bottom:calc(16px + env(safe-area-inset-bottom,0px));left:50%;flex-direction:row;width:max-content;max-width:calc(100vw - 24px);gap:4px;padding:8px;border-radius:22px;transform:translateX(-50%)}
+  :is(#mosaic,body) .mosaic-article-rail{top:auto;right:auto;bottom:0;left:50%;flex-direction:row;width:max-content;max-width:calc(100vw - 24px);gap:4px;padding:8px 8px calc(8px + env(safe-area-inset-bottom,0px));border-right:1px solid #ffffff14;border-bottom:0;border-radius:22px 22px 0 0;transform:translateX(-50%)}
   :is(#mosaic,body) .mosaic-article-rail>.mosaic-native-edit-link,:is(#mosaic,body) .mosaic-article-rail>a,:is(#mosaic,body) .mosaic-article-rail .mosaic-export-toolbar button{position:static;flex-basis:44px;width:44px;min-width:44px;height:44px;min-height:44px}
   :is(#mosaic,body) .mosaic-article-rail .mosaic-rail-label,:is(#mosaic,body) .mosaic-article-rail .mosaic-export-feedback-label{top:auto;right:auto;bottom:calc(100% + 12px);left:50%;max-width:calc(100vw - 40px);transform:translate(-50%,4px)}
   :is(#mosaic,body) .mosaic-article-rail>a:is(:hover,:focus-visible) .mosaic-rail-label,:is(#mosaic,body) .mosaic-article-rail .mosaic-export-toolbar button:is(:hover,:focus-visible,[data-export-state=pending],[data-export-state=success]) .mosaic-export-feedback-label{transform:translate(-50%,0)}
