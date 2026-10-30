@@ -262,12 +262,18 @@
     function personName(p) { return p.name || 'Person ' + p.id; }
 
     var root = el('section', 'mt-root'); root.setAttribute('aria-label', 'Mosaic team');
-    var heading = add(root, 'header', 'mt-heading'); add(heading, 'h1', 'mt-title', 'Meet the team');
-    add(heading, 'p', 'mt-intro', 'The people behind Mosaic and the connections that bring our work together.');
-    if (preview) add(heading, 'p', 'mt-preview-note', 'Reference preview · based on the supplied organization chart. Live directory data has not been verified here.');
     var cover = coverURL(config);
-    if (cover) { var hero = add(root, 'figure', 'mt-hero'), heroImage = add(hero, 'img'); heroImage.alt = ''; heroImage.width = 800; heroImage.height = 500; heroImage.decoding = 'async'; heroImage.loading = 'eager'; heroImage.src = cover; }
-    var chart = add(root, 'section', 'mt-chart'); add(chart, 'h2', 'mt-section-title', 'Organization chart');
+    if (cover) {
+      var hero = add(root, 'div', 'mt-hero mo-page-hero'), heroImage = add(hero, 'img'); heroImage.alt = ''; heroImage.width = 1200; heroImage.height = 348; heroImage.decoding = 'async'; heroImage.loading = 'eager'; heroImage.setAttribute('fetchpriority','high'); heroImage.src = cover;
+      add(hero, 'span', 'mo-page-banner-label', 'Meet the team').setAttribute('aria-hidden','true');
+    }
+    var pageBody = add(root, 'div', 'mo-page-body');
+    var heading = add(pageBody, 'header', 'mt-heading mo-page-intro');
+    add(heading, 'p', 'mo-eyebrow', 'Connected by our people'); add(heading, 'h1', 'mt-title', 'Meet the team');
+    add(heading, 'p', 'mt-intro mo-lead', 'Meet the people behind Mosaic and see how our teams connect.');
+    add(heading, 'p', '', 'Explore the reporting structure, find a colleague and connect by email, chat or phone.');
+    if (preview) add(heading, 'p', 'mt-preview-note', 'Reference preview · based on the supplied organization chart. Live directory data has not been verified here.');
+    var chart = add(pageBody, 'section', 'mt-chart'); add(chart, 'h2', 'mt-section-title', 'Organization chart');
     var workbench = add(chart, 'div', 'mt-workbench');
     var status = add(workbench, 'div', 'mt-status'); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
     var warning = add(workbench, 'div', 'mt-warning'); warning.hidden = true;
