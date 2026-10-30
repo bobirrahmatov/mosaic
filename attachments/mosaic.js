@@ -2711,8 +2711,43 @@
     cleanup.push(function(){component.destroy();});return component.ready;
   }
   function insights(){root.innerHTML='';var component=w.MosaicInsights.mount(root,{config:cfg,api:api,signal:controller.signal});cleanup.push(function(){component.destroy();});return component.ready;}
-  function results(token,r){root.innerHTML='<h1>Search Mosaic</h1>'+searchForm(r.q)+'<section class="mo-section"><div class="mo-results-top"><h2>Results for “'+esc(r.q)+'”</h2><a class="mo-link" href="#/">Back to home</a></div><div id="mo-collection"></div></section>';bindSearch();return collection(root.querySelector('#mo-collection'),token,r);}
-  async function collection(target,token,r,parent){target.setAttribute('aria-busy','true');target.innerHTML='<p class="mo-status" role="status">'+(r.q?'Searching…':'Loading pages…')+'</p>';try{var list=r.q?await api.search(r.q,{start:r.start,limit:12,signal:controller.signal,parentId:parent}):await api.children(parent,{start:r.start,limit:12,signal:controller.signal});if(token!==generation)return;target.innerHTML=list.results.length?list.results.map(function(p){return '<article class="mo-result"><div class="mo-meta">'+esc(date(p.updated)||'Mosaic page')+'</div><h3><a href="'+esc(p.url)+'">'+esc(p.title)+'</a></h3><p>'+esc(p.excerpt||'Open this page to learn more.')+'</p></article>';}).join(''):statusBox(r.q?'No matching pages. Try a shorter phrase or a different keyword.':'No resources have been published here yet.');if(list.results.length||r.start||list.hasMore){target.insertAdjacentHTML('beforeend','<nav class="mo-pagination" aria-label="Results pages"><span>'+(r.start?'':'')+'</span><span class="mo-meta">'+(list.results.length?'Showing '+(r.start+1)+'–'+(r.start+list.results.length):'No pages on this page')+'</span><span></span></nav>');var pager=target.querySelector('.mo-pagination');function page(start,label,slot){var a=d.createElement('a');a.className='mo-button mo-button-secondary';a.textContent=label;a.href=(r.q?'#/search?q='+encodeURIComponent(r.q)+'&':'#/?')+'start='+start;pager.children[slot].append(a);}if(r.start)page(Math.max(0,r.start-12),'Previous',0);if(list.hasMore)page(list.nextStart,'Next',2);}target.insertAdjacentHTML('afterbegin','<p class="mo-sr" role="status">'+list.results.length+' results loaded.</p>');}catch(e){if(token===generation)errors(target,e,function(){collection(target,token,r,parent);});}finally{if(token===generation)target.removeAttribute('aria-busy');}}
+  function searchResult(page,index){
+    var titleId='mo-result-title-'+index,updated=date(page.updated);
+    var documentIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true" focusable="false"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8l-5-5Z M14 3v5h5 M8 12h8 M8 16h6"/></svg>';
+    return '<article class="mo-result"><a class="mo-result-link" data-mosaic-result href="'+esc(page.url)+'" aria-labelledby="'+titleId+'"><span class="mo-result-icon" aria-hidden="true">'+documentIcon+'</span><div class="mo-result-content"><h3 id="'+titleId+'">'+esc(page.title)+'</h3><p class="mo-result-summary">'+esc(page.excerpt||'Open this page to learn more.')+'</p><div class="mo-result-meta"><span>Mosaic page</span>'+(updated?'<time datetime="'+esc(new Date(page.updated).toISOString())+'">Updated '+esc(updated)+'</time>':'')+'</div></div><span class="mo-result-open" aria-hidden="true">'+arrow+'</span></a></article>';
+  }
+  function results(token,r){
+    root.innerHTML='<div class="mo-search-page"><header class="mo-search-header"><div class="mo-results-top"><div><p class="mo-eyebrow">Across Mosaic</p><h1>Search Mosaic</h1><p class="mo-search-description">Find articles, guides and shared knowledge across the whole space.</p></div><a class="mo-search-back" href="#/">Back to home</a></div>'+searchForm(r.q)+'</header><section class="mo-search-results" aria-labelledby="mo-results-title"><div class="mo-search-summary"><h2 id="mo-results-title">Results for “'+esc(r.q)+'”</h2><p class="mo-results-range"></p></div><div id="mo-collection"></div></section></div>';
+    bindSearch();return collection(root.querySelector('#mo-collection'),token,r);
+  }
+  function resultPagination(target,list,r){
+    if(!list.results.length&&!r.start&&!list.hasMore)return;
+    target.insertAdjacentHTML('beforeend','<nav class="mo-pagination" aria-label="Results pages"><span></span><span class="mo-meta">'+(list.results.length?'Showing '+(r.start+1)+'–'+(r.start+list.results.length):'No pages on this page')+'</span><span></span></nav>');
+    var pager=target.querySelector('.mo-pagination');
+    function page(start,label,slot){var a=d.createElement('a');a.className='mo-button mo-button-secondary';a.textContent=label;a.href=(r.q?'#/search?q='+encodeURIComponent(r.q)+'&':'#/?')+'start='+start;pager.children[slot].append(a);}
+    if(r.start)page(Math.max(0,r.start-12),'Previous',0);
+    if(list.hasMore)page(list.nextStart,'Next',2);
+  }
+  function emptySearch(target,r){
+    var heading=r.start?'No pages on this page':'No matching pages';
+    target.innerHTML='<div class="mo-search-empty"><span class="mo-search-empty-icon" aria-hidden="true">'+glass+'</span><h3>'+heading+'</h3><p>'+(r.start?'Go back to the previous results, or try another search.':'Try a shorter phrase, check the spelling, or use a different keyword.')+'</p><button type="button" class="mo-button mo-button-secondary" data-search-reset>Start a new search</button></div>';
+    target.querySelector('[data-search-reset]').addEventListener('click',function(){var input=root.querySelector('.mo-search-form input');input.value='';input.focus();navigate('/');});
+  }
+  async function collection(target,token,r,parent){
+    var range=root.querySelector('.mo-results-range');if(range)range.textContent='';
+    target.setAttribute('aria-busy','true');
+    target.innerHTML='<div class="mo-search-loading" role="status"><span aria-hidden="true">'+glass+'</span><p>'+(r.q?'Searching Mosaic…':'Loading pages…')+'</p></div>';
+    try{
+      var list=r.q?await api.search(r.q,{start:r.start,limit:12,signal:controller.signal,parentId:parent}):await api.children(parent,{start:r.start,limit:12,signal:controller.signal});
+      if(token!==generation)return;
+      if(list.results.length)target.innerHTML='<div class="mo-results-list">'+list.results.map(searchResult).join('')+'</div>';
+      else emptySearch(target,r);
+      if(range)range.textContent=list.results.length?'Showing '+(r.start+1)+'–'+(r.start+list.results.length):r.start?'No results on this page':'0 results';
+      resultPagination(target,list,r);
+      target.insertAdjacentHTML('afterbegin','<p class="mo-sr" role="status">'+list.results.length+' results loaded.</p>');
+    }catch(e){if(token===generation)errors(target,e,function(){collection(target,token,r,parent);});}
+    finally{if(token===generation)target.removeAttribute('aria-busy');}
+  }
   async function writing(token,r){
     root.innerHTML='<p class="mo-status" role="status">Opening the editor…</p>';
     try{
