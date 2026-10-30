@@ -463,13 +463,13 @@ body[data-mosaic-host=active] :is(#main,#main-content):has([data-mosaic-root]){b
 @media(prefers-reduced-motion:reduce){:is(#mosaic,[data-mosaic-add-page]) .mo-choice .mo-choice-chevron{transition:none}}
 @media print{[data-mosaic-add-page]{display:none!important}}
 
-:is(#mosaic,body) [data-mosaic-add-page] a.mo-choice{text-decoration:none!important;display:inline-flex;align-items:center;justify-content:center;color:var(--mosaic-theme-text)}
+:is(#mosaic,body) [data-mosaic-add-page] .mosaic-add-page{text-decoration:none!important;display:inline-flex;align-items:center;justify-content:center;color:var(--mosaic-theme-text)}
 /* Navigation feedback belongs to this widget, not the native navbar controls. */
-:is(#mosaic,body) [data-mosaic-add-page] a.mosaic-add-page{background-image:none!important;transition:background-color .16s ease,border-color .16s ease,color .16s ease,opacity .12s ease!important}
-:is(#mosaic,body) [data-mosaic-add-page] a.mosaic-add-page:hover{background:var(--mosaic-theme-selected)!important;border-color:var(--mosaic-theme-link)!important;color:var(--mosaic-theme-link)!important}
-:is(#mosaic,body) [data-mosaic-add-page] a.mosaic-add-page:active:not([aria-busy=true]){opacity:.72}
-:is(#mosaic,body) [data-mosaic-add-page] a.mosaic-add-page[aria-busy=true]{background:var(--mosaic-theme-selected)!important;border-color:var(--mosaic-theme-link)!important;color:var(--mosaic-theme-link)!important;opacity:1!important;cursor:wait}
-:is(#mosaic,body) [data-mosaic-add-page] a.mosaic-add-page[aria-busy=true] .mosaic-add-icon{display:none!important}
+:is(#mosaic,body) [data-mosaic-add-page] .mosaic-add-page{background-image:none!important;transition:background-color .16s ease,border-color .16s ease,color .16s ease,opacity .12s ease!important}
+:is(#mosaic,body) [data-mosaic-add-page] .mosaic-add-page:hover{background:var(--mosaic-theme-selected)!important;border-color:var(--mosaic-theme-link)!important;color:var(--mosaic-theme-link)!important}
+:is(#mosaic,body) [data-mosaic-add-page] .mosaic-add-page:active:not([aria-busy=true]){opacity:.72}
+:is(#mosaic,body) [data-mosaic-add-page] .mosaic-add-page[aria-busy=true]{background:var(--mosaic-theme-selected)!important;border-color:var(--mosaic-theme-link)!important;color:var(--mosaic-theme-link)!important;opacity:1!important;cursor:wait}
+:is(#mosaic,body) [data-mosaic-add-page] .mosaic-add-page[aria-busy=true] .mosaic-add-icon{display:none!important}
 :is(#mosaic,body) [data-mosaic-add-page] .mosaic-add-spinner{display:block!important;position:static!important;box-sizing:border-box;flex:0 0 18px;width:18px!important;min-width:18px!important;max-width:18px!important;height:18px!important;margin:0!important;padding:0!important;border:2px solid var(--mosaic-theme-border)!important;border-top-color:currentColor!important;border-radius:50%!important;background:none!important;animation:mosaic-control-spin .8s linear infinite!important}
 :is(#mosaic,body) [data-mosaic-add-page] .mosaic-add-spinner[hidden]{display:none!important}
 @keyframes mosaic-control-spin{to{transform:rotate(360deg)}}

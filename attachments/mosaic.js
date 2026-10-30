@@ -1745,11 +1745,11 @@
       !/[?&](?:pageVersion|preview|mosaicNativeUi)=/.test(w.location.search)&&
       !d.querySelector('#editpageform,#createpageform,#content-editor,body.contenteditor');
   }
-  function reset(item){item.link.removeAttribute('aria-busy');item.label.textContent='Add page';item.spinner.hidden=true;}
-  function remove(item){item.link.removeEventListener('click',item.activate);item.link.remove();}
+  function reset(item){item.button.removeAttribute('aria-busy');item.label.textContent='Add page';item.spinner.hidden=true;}
+  function remove(item){item.button.removeEventListener('click',item.activate);item.button.remove();}
   function reconcile(){
     widgets=widgets.filter(function(item){
-      if(item.host.isConnected&&item.link.parentElement===item.host)return true;
+      if(item.host.isConnected&&item.button.parentElement===item.host)return true;
       remove(item);return false;
     });
   }
@@ -1757,30 +1757,29 @@
   function boot(config){
     reconcile();
     if(!allowed()){visibility();return;}
-    var cfg=w.MosaicConfig.resolve(config);
+    var cfg=w.MosaicConfig.resolve(config),destination=new URL(w.MosaicConfig.page(cfg,'home')+'#/new',w.location.href).href;
     d.querySelectorAll('[data-mosaic-add-page]').forEach(function(host){
       var existing=widgets.find(function(item){return item.host===host;});
       // A host navbar can be cloned or replace its inner markup. Rebuild stale
-      // Mosaic controls so a visible copied link also has a live click handler.
-      host.querySelectorAll('.mosaic-add-page').forEach(function(link){if(link!==existing?.link)link.remove();});
-      if(existing){existing.link.href=w.MosaicConfig.page(cfg,'home')+'#/new';return;}
-      var link=d.createElement('a');link.className='mo-choice mosaic-add-page';
-      link.href=w.MosaicConfig.page(cfg,'home')+'#/new';link.setAttribute('aria-label','Add page');
+      // Mosaic controls so a visible copied button has a live click handler.
+      host.querySelectorAll('.mosaic-add-page').forEach(function(button){if(button!==existing?.button)button.remove();});
+      if(existing){existing.destination=destination;return;}
+      var button=d.createElement('button');button.type='button';button.className='mo-choice mosaic-add-page';button.setAttribute('aria-label','Add page');
       var plus=w.MosaicSearch.icon('M12 5v14M5 12h14');plus.classList.add('mosaic-add-icon');
       var label=d.createElement('span');label.setAttribute('data-mosaic-add-label','');label.textContent='Add page';
       var spinner=d.createElement('span');spinner.className='mosaic-add-spinner';spinner.setAttribute('aria-hidden','true');spinner.hidden=true;
-      var item={host:host,link:link,label:label,spinner:spinner};
+      var item={host:host,button:button,label:label,spinner:spinner,destination:destination};
       function activate(event){
-        if(event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
-        // Confluence's delegated navbar handler may cancel or rewrite an anchor.
-        // Own this navigation while keeping modified clicks as native links.
+        if(event.button!==0)return;
+        // Keep this action out of the host's anchor navigation. Its destination
+        // comes from configuration, never from rewritten navbar DOM attributes.
         event.preventDefault();event.stopPropagation();
-        if(!link.isConnected||host.hidden||!allowed()||link.getAttribute('aria-busy')==='true')return;
-        link.setAttribute('aria-busy','true');label.textContent='Opening…';spinner.hidden=false;
-        try{w.location.assign(link.href);}catch(_){reset(item);}
+        if(!button.isConnected||host.hidden||!allowed()||button.getAttribute('aria-busy')==='true')return;
+        button.setAttribute('aria-busy','true');label.textContent='Opening…';spinner.hidden=false;
+        try{w.location.assign(item.destination);}catch(_){reset(item);}
       }
-      item.activate=activate;link.addEventListener('click',activate);
-      link.append(plus,spinner,label);host.append(link);widgets.push(item);
+      item.activate=activate;button.addEventListener('click',activate);
+      button.append(plus,spinner,label);host.append(button);widgets.push(item);
     });
     if(!started){w.addEventListener('hashchange',visibility);w.addEventListener('pageshow',visibility);started=true;}visibility();
   }
