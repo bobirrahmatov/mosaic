@@ -878,10 +878,12 @@
     if(current.signature===signature&&current.heading?.isConnected)return;
     current.signature=signature;current.media?.destroy();current.heading?.remove();
     var header=element('header','mosaic-native-document-heading');header.setAttribute('data-mosaic-owned','');
-    var trail=element('nav','mosaic-native-breadcrumb');trail.setAttribute('aria-label','Breadcrumb');
-    function crumb(label,id){var href=pageUrl(config,id);if(!href)return;var link=element('a','',label);link.href=href;trail.append(link);}
-    crumb('Mosaic',config.rootPageId);if(collection!=='Mosaic')crumb(collection,config.pageIds?.[article.collection]);
-    var here=element('span','',text);here.setAttribute('aria-current','page');trail.append(here);header.append(trail);
+    // Host verification derives the collection from native page ancestors.
+    if(article.collection==='insights'){
+      var trail=element('nav','mosaic-native-breadcrumb');trail.setAttribute('aria-label','Breadcrumb');
+      [['Mosaic',config.rootPageId],['Insights',config.pageIds?.insights]].forEach(function(item){var href=pageUrl(config,item[1]);if(!href)return;var link=element('a','',item[0]);link.href=href;trail.append(link);});
+      var here=element('span','',text);here.setAttribute('aria-current','page');trail.append(here);header.append(trail);
+    }
     header.append(element('p','mosaic-native-category',collection),element('h1','',text));
     // Keep verified native authorship beside the publication date. Do not add
     // a second metadata rail or borrow edit details from a newer revision.
@@ -2171,9 +2173,6 @@
       });
     }
     var root=el('section','mrs-root');root.setAttribute('aria-label','Mosaic Resources');
-    var breadcrumb=add(root,'nav','mrs-breadcrumb');breadcrumb.setAttribute('aria-label','Breadcrumb');
-    var home=add(breadcrumb,'a','','Home');home.href=context+'/pages/viewpage.action?pageId='+encodeURIComponent(config.rootPageId||config.pages?.home||'3961414585');
-    add(breadcrumb,'span','mrs-breadcrumb-divider','/').setAttribute('aria-hidden','true');add(breadcrumb,'span','','Resources').setAttribute('aria-current','page');
     var hero=add(root,'div','mrs-hero'),heroImage=add(hero,'img','mrs-hero-image');heroImage.alt='';heroImage.width=800;heroImage.height=500;heroImage.loading='eager';heroImage.decoding='async';heroImage.setAttribute('fetchpriority','high');
     var banner=config.resourcesBanner||config.resourceBanner,file=/^mosaic-[a-z0-9-]+\.webp$/.test(banner||'')?banner:'mosaic-resources-banner.webp',assetBase=config.assetBase||context+'/download/attachments/'+encodeURIComponent(config.attachmentPageId||'3981001251')+'/';
     try{var assetURL=new URL(assetBase.replace(/\/?$/,'/')+file,w.location.href);if(assetURL.origin!==w.location.origin||!/^https?:$/.test(assetURL.protocol)||assetURL.username||assetURL.password)throw Error();heroImage.src=assetURL.href;}catch(_){heroImage.hidden=true;}
@@ -2362,7 +2361,6 @@
   function navigate(hash){w.location.hash=hash;}
   function nativeLink(url){try{var u=new URL(url,w.location.href);return /^https?:$/.test(u.protocol)&&!u.username&&!u.password?u.href:'';}catch(_){return '';}}
   function link(key,label,cls){return '<a class="'+(cls||'mo-link')+'" href="'+href(key)+'">'+esc(label)+arrow+'</a>';}
-  function bread(label){return '<nav class="mo-breadcrumb" aria-label="Breadcrumb"><a href="'+href('home')+'">Home</a><span aria-hidden="true">/</span>'+esc(label)+'</nav>';}
   function searchForm(value,label){return '<form class="mo-search-form" role="search">'+glass+'<label class="mo-sr" for="mo-query">'+esc(label||'Search Mosaic')+'</label><input id="mo-query" type="search" name="q" placeholder="'+esc(label||'Search Mosaic')+'" maxlength="160" autocomplete="off" value="'+esc(value)+'"><button class="mo-button" type="submit">Search</button></form>';}
   function bindSearch(parent){var form=root.querySelector('.mo-search-form');if(!form)return;form.addEventListener('submit',function(e){e.preventDefault();var q=form.elements.q.value.trim();navigate(q?'/search?q='+encodeURIComponent(q):'/');});}
   function statusBox(message,error){return '<div class="mo-empty'+(error?' mo-error':'')+'" role="'+(error?'alert':'status')+'"><p>'+esc(message)+'</p>'+(error?'<button class="mo-quiet" data-retry>Try again</button>':'')+'</div>';}
@@ -2505,7 +2503,7 @@
     cleanup.push(function(){component.destroy();});return component.ready;
   }
   function insights(){root.innerHTML='';var component=w.MosaicInsights.mount(root,{config:cfg,api:api,signal:controller.signal});cleanup.push(function(){component.destroy();});return component.ready;}
-  function results(token,r){root.innerHTML=bread('Search')+'<h1>Search Mosaic</h1>'+searchForm(r.q)+'<section class="mo-section"><div class="mo-results-top"><h2>Results for “'+esc(r.q)+'”</h2><a class="mo-link" href="#/">Back to home</a></div><div id="mo-collection"></div></section>';bindSearch();return collection(root.querySelector('#mo-collection'),token,r);}
+  function results(token,r){root.innerHTML='<h1>Search Mosaic</h1>'+searchForm(r.q)+'<section class="mo-section"><div class="mo-results-top"><h2>Results for “'+esc(r.q)+'”</h2><a class="mo-link" href="#/">Back to home</a></div><div id="mo-collection"></div></section>';bindSearch();return collection(root.querySelector('#mo-collection'),token,r);}
   async function collection(target,token,r,parent){target.setAttribute('aria-busy','true');target.innerHTML='<p class="mo-status" role="status">'+(r.q?'Searching…':'Loading pages…')+'</p>';try{var list=r.q?await api.search(r.q,{start:r.start,limit:12,signal:controller.signal,parentId:parent}):await api.children(parent,{start:r.start,limit:12,signal:controller.signal});if(token!==generation)return;target.innerHTML=list.results.length?list.results.map(function(p){return '<article class="mo-result"><div class="mo-meta">'+esc(date(p.updated)||'Mosaic page')+'</div><h3><a href="'+esc(p.url)+'">'+esc(p.title)+'</a></h3><p>'+esc(p.excerpt||'Open this page to learn more.')+'</p></article>';}).join(''):statusBox(r.q?'No matching pages. Try a shorter phrase or a different keyword.':'No resources have been published here yet.');if(list.results.length||r.start||list.hasMore){target.insertAdjacentHTML('beforeend','<nav class="mo-pagination" aria-label="Results pages"><span>'+(r.start?'':'')+'</span><span class="mo-meta">'+(list.results.length?'Showing '+(r.start+1)+'–'+(r.start+list.results.length):'No pages on this page')+'</span><span></span></nav>');var pager=target.querySelector('.mo-pagination');function page(start,label,slot){var a=d.createElement('a');a.className='mo-button mo-button-secondary';a.textContent=label;a.href=(r.q?'#/search?q='+encodeURIComponent(r.q)+'&':'#/?')+'start='+start;pager.children[slot].append(a);}if(r.start)page(Math.max(0,r.start-12),'Previous',0);if(list.hasMore)page(list.nextStart,'Next',2);}target.insertAdjacentHTML('afterbegin','<p class="mo-sr" role="status">'+list.results.length+' results loaded.</p>');}catch(e){if(token===generation)errors(target,e,function(){collection(target,token,r,parent);});}finally{if(token===generation)target.removeAttribute('aria-busy');}}
   async function writing(token,r){
     root.innerHTML='<p class="mo-status" role="status">Opening the editor…</p>';
