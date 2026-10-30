@@ -54,17 +54,16 @@
     options = options || {};
     if (!container || !options.api || !options.config) throw new Error('Provide an editor container, Mosaic API and configuration.');
     var doc = container.ownerDocument, win = doc.defaultView, api = options.api, config = options.config, page = options.page || null;
-    var lifecycle = new win.AbortController(), destroyed = false, busy = false, uncertain = false, ready = false, purifier = null, selection = null, baseline = null, popovers = [], formatPicker = null, destinationPicker = null;
+    var lifecycle = new win.AbortController(), destroyed = false, busy = false, uncertain = false, ready = false, purifier = null, selection = null, baseline = null, popovers = [], formatPicker = null;
     var files = [], renderedPending = '', nativeFiles = [], nativeMore = false, nativeStart = 0, nativeBusy = false, nativeError = false, sequence = 0, expanded = false, previewing = false, savedOverflow = null, selectedImage = null, selectedLink = null, selectedImageFile = null, selectedFiles = [], imagePreviewURL = '', activeDialog = null, dialogSequence = 0, activeTable = null, dialogTable = null, internalTextDrag = false, uploadIncomplete = false;
     var pending = !page && typeof api.getPendingPublication === 'function' ? api.getPendingPublication() : null;
     var source = page || pending || {title:'',html:''};
-    var parentId = String(source.parentId || options.parentId || config.pages.insights);
+    var parentId = String((page || pending) && source.parentId || config.pages.insights);
     var collection = String(parentId) === String(config.pages.resources) ? 'Resources' : 'Insights';
-    if (![config.pages.insights,config.pages.resources].map(String).includes(parentId)) throw new Error('Choose the configured Insights or Resources collection.');
+    if (![config.pages.insights,config.pages.resources].map(String).includes(parentId)) throw new Error('This article is outside the supported publishing destination.');
     var section = doc.createElement('section'); section.className = 'mosaic-editor';
     section.innerHTML = '<form class="mosaic-editor-form" novalidate><div class="mosaic-editor-topbar"><div class="mosaic-editor-heading"><h1>' + (page ? 'Edit page' : 'Create a page') + '</h1><p class="mosaic-editor-eyebrow">Mosaic · ' + collection + '</p></div><div class="mosaic-editor-actions"><button type="button" class="mosaic-editor-focus-exit" hidden>Exit expanded view</button><button type="button" class="mosaic-editor-cancel">Cancel</button><button type="button" class="mosaic-editor-preview-toggle" disabled>Preview</button><button type="submit" class="mosaic-editor-publish" disabled><span class="mosaic-editor-spinner" aria-hidden="true" hidden></span><span data-publish-label>Publish</span>' + icon('arrow') + '</button></div></div>' +
       '<div class="mosaic-editor-status" role="status" aria-live="polite">Preparing editor…</div><div class="mosaic-editor-main">' +
-      (!page && !pending ? '<div class="mosaic-editor-destination"><span class="mosaic-editor-field-label">Publish in</span><div data-destination></div></div>' : '') +
       '<div class="mosaic-editor-fields"><label class="mosaic-editor-title-label">Title<input class="mosaic-editor-title" name="title" maxlength="255" placeholder="Give your page a clear, useful title" autocomplete="off" disabled></label>' +
       '<label class="mosaic-editor-summary-label">Summary <span>Optional</span><textarea class="mosaic-editor-summary" name="summary" maxlength="1000" rows="2" placeholder="A short introduction to your page" disabled></textarea></label></div>' +
       '<div class="mosaic-editor-content-label">Content</div><div class="mosaic-editor-writing"><div class="mosaic-editor-toolbar" role="toolbar" aria-label="Article formatting"><div class="mosaic-editor-format" data-format></div>' +
@@ -105,7 +104,6 @@
       title.disabled = disabled; summary.disabled = disabled; body.contentEditable = disabled ? 'false' : 'true';
       toolbar.querySelectorAll('button').forEach(function (node) { node.disabled = disabled; });
       if (formatPicker) formatPicker.setDisabled(disabled);
-      if (destinationPicker) destinationPicker.setDisabled(disabled || !!page);
       section.querySelectorAll('.mosaic-editor-insert input,.mosaic-editor-insert button,.mosaic-editor-table-tools button,[data-files],[data-remove-file],[data-insert-attachment]').forEach(function (node) { node.disabled = disabled; });
       section.querySelector('[data-more-attachments]').disabled = disabled || nativeBusy;
       publish.disabled = !ready || busy; cancel.disabled = busy; previewButton.disabled = !ready || busy;
@@ -553,12 +551,6 @@
         if (page && page.hasUnsupportedContent) { message('This page contains native content that this editor cannot safely change. Your content has not been modified.'); section.querySelector('.mosaic-editor-main').hidden = true; publish.hidden = true; previewButton.hidden = true; return; }
         if (!root.MosaicPopover || typeof root.MosaicPopover.mount !== 'function') throw new Error('The editor controls could not load. Reload the page to try again.');
         formatPicker = root.MosaicPopover.mount(section.querySelector('[data-format]'), {label:'Paragraph style',value:'p',options:FORMATS,retainFocus:false,onChange:function (value) { if (!FORMATS.some(function (item) { return item.value === value; })) return; closePanels(); command('formatBlock',value); }}); popovers.push(formatPicker);
-        if (!page && !pending) {
-          destinationPicker = root.MosaicPopover.mount(section.querySelector('[data-destination]'), {label:'Publish in',value:parentId,options:[{value:String(config.pages.insights),label:'Insights'},{value:String(config.pages.resources),label:'Resources'}],onChange:function (value) {
-            if (locked() || page || ![config.pages.insights,config.pages.resources].map(String).includes(String(value))) { destinationPicker.setValue(parentId); return; }
-            parentId = String(value); collection = parentId === String(config.pages.resources) ? 'Resources' : 'Insights'; section.querySelector('.mosaic-editor-eyebrow').textContent = 'Mosaic · ' + collection;
-          }}); popovers.push(destinationPicker);
-        }
         updateControls();
         if (!root.MosaicLibraries || typeof root.MosaicLibraries.load !== 'function') throw new Error('The content sanitizer is unavailable. Reload the page to try again.');
         var library = await root.MosaicLibraries.load('dompurify'); if (destroyed) return; purifier = root.DOMPurify || library;

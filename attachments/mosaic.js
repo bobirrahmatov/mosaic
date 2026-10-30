@@ -183,7 +183,6 @@
     if (!/^[1-9]\d{0,19}$/.test(String(value || ''))) throw fault('Configure a numeric ' + name + '.', 'CONFIGURATION');
     return String(value);
   }
-  function quote(value) { return '"' + String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"'; }
   function safeURL(value) {
     var href = String(value || '').trim();
     return !!href && !/[\u0000-\u0020\u007f]/.test(href) && (/^(?:https?:\/\/|mailto:|tel:)/i.test(href) || /^\/(?!\/)/.test(href) || /^#[\w-]/.test(href));
@@ -291,9 +290,9 @@
     if (!location || !/^https?:$/.test(location.protocol)) throw fault('Open Mosaic inside Confluence to read or publish pages.', 'UNAVAILABLE');
     var storage = dependencies.storage;
     if (storage === undefined) try { storage = root.sessionStorage; } catch (_) { storage = null; }
-    var excludes = Array.from(new Set([rootId, assetId].concat(config.excludePageIds || []).map(function (id) { return numeric(id, 'excluded page ID'); })));
+    var excludes = Array.from(new Set([assetId].concat(config.excludePageIds || []).map(function (id) { return numeric(id, 'excluded page ID'); })));
     var excludedTrees = Array.from(new Set([assetId].concat(config.excludeAncestorIds || []).map(function (id) { return numeric(id, 'excluded ancestor ID'); })));
-    var verifiedRoot = null, mutation = false, pending = null, uploads = new WeakMap(), uploadSequence = 0, insightSnapshot = null, insightRevision = 0;
+    var verifiedRoot = null, mutation = false, pending = null, uploads = new WeakMap(), uploadSequence = 0, insightSnapshot = null, insightRevision = 0, searchSnapshots = new Map();
     var pendingKey = 'mosaic.pending-publication.' + space + '.' + rootId;
     try { var stored = storage && storage.getItem(pendingKey); if (stored) pending = JSON.parse(stored); } catch (_) { /* Storage unavailable; retain this page's in-memory receipt. */ }
     if (pending && (!pending.title || !/^[1-9]\d*$/.test(pending.parentId || '') || typeof pending.html !== 'string')) pending = null;
@@ -330,12 +329,13 @@
     }
     function scope(page, allowRoot, parent, allowExcluded) {
       var id = String(page && page.id || ''), ancestors = page && page.ancestors;
-      if (!/^[1-9]\d*$/.test(id) || page.type !== 'page' || page.status !== 'current' || !page.space || page.space.key !== space || !Array.isArray(ancestors) || (id === rootId ? !allowRoot : !ancestors.some(function (item) { return String(item.id) === rootId; }))) throw fault('Confluence returned a page outside Mosaic.', 'INVALID_SCOPE');
+      if (!/^[1-9]\d*$/.test(id) || page.type !== 'page' || page.status !== 'current' || !page.space || page.space.key !== space || !Array.isArray(ancestors) || id === rootId && !allowRoot) throw fault('Confluence returned a page outside Mosaic.', 'INVALID_SCOPE');
       if (!allowExcluded && id !== rootId && excluded(page)) throw fault('This page is not part of the Mosaic content collection.', 'INVALID_SCOPE');
       if (parent && String(ancestors.at(-1) && ancestors.at(-1).id) !== parent) throw fault('Confluence returned a page outside the requested collection.', 'INVALID_SCOPE');
       return page;
     }
     async function ensureRoot(signal) {
+      if (signal && signal.aborted) throw fault('The request was cancelled.', 'ABORTED');
       if (!verifiedRoot) {
         // Do not tie the shared identity read to one search caller's cancellation.
         verifiedRoot = request('/rest/api/content/' + rootId + '?expand=space,ancestors').then(function (page) {
@@ -343,8 +343,17 @@
           return scope(page, true);
         }).catch(function (error) { verifiedRoot = null; throw error; });
       }
-      await verifiedRoot;
-      if (signal && signal.aborted) throw fault('The request was cancelled.', 'ABORTED');
+      if (!signal) { await verifiedRoot; return; }
+      // Release one cancelled caller immediately without aborting the shared
+      // identity read still needed by other page components.
+      await new Promise(function (resolve,reject) {
+        var settled = false;
+        function finish(error) { if (settled) return; settled = true; signal.removeEventListener('abort',abort); if (error) reject(error); else resolve(); }
+        function abort() { finish(fault('The request was cancelled.', 'ABORTED')); }
+        signal.addEventListener('abort',abort,{once:true});
+        if (signal.aborted) abort();
+        verifiedRoot.then(function () { finish(); },finish);
+      });
     }
     function card(page) {
       var html = page.body && page.body.storage && page.body.storage.value || '';
@@ -500,18 +509,55 @@
     }
     async function search(query, options) {
       options = options || {}; var page = pagination(options), parent = options.parentId ? numeric(options.parentId, 'search parent ID') : null;
-      await ensureRoot(options.signal); if (parent) await getPage(parent, {signal:options.signal});
-      var clauses = ['type = page','space = ' + quote(space),'ancestor = ' + rootId,'id NOT IN (' + excludes.join(',') + ')','title != "navBar"'];
-      excludedTrees.forEach(function (id) { clauses.push('ancestor != ' + id); });
-      if (parent) clauses.push('ancestor = ' + parent);
       var term = String(query || '').trim(); if (term.length > 250) throw fault('Keep the search to 250 characters or fewer.', 'INVALID_QUERY');
-      // CQL quoting is separate from its Lucene text expression escaping.
-      if (term) clauses.push('text ~ ' + quote(term.replace(/([+\-!(){}\[\]^"~*?:\\/|&])/g, '\\$1')));
-      var orders = {updated:'lastmodified DESC',newest:'created DESC',oldest:'created ASC',title:'title ASC'};
-      if (options.sort && !Object.prototype.hasOwnProperty.call(orders,options.sort)) throw fault('Choose an available sort order.', 'INVALID_QUERY');
-      var cql = clauses.join(' AND ') + ' ORDER BY ' + orders[options.sort || 'updated'];
-      var data = await request('/rest/api/content/search?' + new URLSearchParams({cql:cql,start:page.start,limit:page.limit,expand:PAGE_EXPAND}), {signal:options.signal});
-      return result(data, page, null, parent);
+      var sort = options.sort || 'updated';
+      if (!['updated','newest','oldest','title'].includes(sort)) throw fault('Choose an available sort order.', 'INVALID_QUERY');
+      function alive() { if (options.signal && options.signal.aborted) throw fault('The request was cancelled.', 'ABORTED'); }
+      function normalized(value) { return String(value).normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim(); }
+      alive(); await ensureRoot(options.signal); if (parent) await getPage(parent, {signal:options.signal}); alive();
+      var words = normalized(term).split(/\s+/).filter(Boolean), key = JSON.stringify([parent,sort,words]), rows = page.start ? searchSnapshots.get(key) : null;
+      if (!rows) {
+        // Data Center's native space collection includes every page level and
+        // newly published content without relying on the eventual CQL index.
+        // https://docs.atlassian.com/ConfluenceServer/rest/7.8.0/#space/{spaceKey}/content/{type}
+        var matches = [], seen = new Set(), technicalTrees = new Set(excludedTrees), start = 0, reads = 0, revision = insightRevision;
+        for (;;) {
+          alive();
+          if (++reads > 200) throw fault('The Mosaic space is too large to search completely right now. Use the native page tree or try again.', 'SEARCH_INCOMPLETE');
+          var data = await request('/rest/api/space/' + encodeURIComponent(space) + '/content/page?' + new URLSearchParams({depth:'all',start:start,limit:100,expand:PAGE_EXPAND}), {signal:options.signal});
+          alive();
+          if (!Array.isArray(data.results) || data.results.length > 100 || data.start != null && data.start !== start) throw fault('Confluence returned an invalid space page collection.', 'INVALID_RESPONSE');
+          for (var record of data.results) {
+            scope(record, true, null, true);
+            var recordId = String(record.id);
+            if (seen.has(recordId)) throw fault('The Mosaic page list changed while searching. Try the search again.', 'SEARCH_INCOMPLETE');
+            if (seen.size >= 10000) throw fault('The Mosaic space has more than 10,000 pages. This search cannot be completed; use the native page tree.', 'SEARCH_INCOMPLETE');
+            seen.add(recordId);
+            if (/^navbar$/i.test(String(record.title || '').trim())) technicalTrees.add(recordId);
+            if (excluded(record) || parent && !record.ancestors.some(function (item) { return String(item.id) === parent; })) continue;
+            if (typeof record.title !== 'string' || !record.title.trim() || typeof record.body?.storage?.value !== 'string') throw fault('Confluence omitted page content needed for a complete search. Try again.', 'INVALID_RESPONSE');
+            var parts = storageParts(record.body.storage.value), text = normalized(record.title + ' ' + parts.summary + ' ' + plain(record.body?.view?.value || parts.editorHtml));
+            if (words.every(function (word) { return text.includes(word); })) matches.push({card:card(record),ancestors:record.ancestors.map(function (item) { return String(item.id); })});
+          }
+          var more = !!data._links?.next || !data._links && data.results.length === 100;
+          if (!more) break;
+          if (!data.results.length) throw fault('Confluence pagination did not advance. Try the search again.', 'SEARCH_INCOMPLETE');
+          start += data.results.length;
+        }
+        rows = matches.filter(function (item) { return !item.ancestors.some(function (id) { return technicalTrees.has(id); }); }).map(function (item) { return item.card; });
+        rows.sort(function (a,b) {
+          if (sort === 'title') return a.title.localeCompare(b.title) || a.id.localeCompare(b.id);
+          var left = Date.parse(sort === 'updated' ? a.updated : a.created), right = Date.parse(sort === 'updated' ? b.updated : b.created);
+          if (!Number.isFinite(left)) left = 0; if (!Number.isFinite(right)) right = 0;
+          return (sort === 'oldest' ? left-right : right-left) || a.title.localeCompare(b.title) || a.id.localeCompare(b.id);
+        });
+        alive();
+        // Cache only compact matched cards, never full bodies. A fresh search
+        // starts at zero; continuation uses exactly that search's stable ordering.
+        if (revision === insightRevision) { searchSnapshots.delete(key); searchSnapshots.set(key, rows); while (searchSnapshots.size > 3) searchSnapshots.delete(searchSnapshots.keys().next().value); }
+      }
+      alive(); var hasMore = page.start + page.limit < rows.length;
+      return {results:rows.slice(page.start,page.start+page.limit),start:page.start,limit:page.limit,hasMore:hasMore,nextStart:hasMore ? page.start+page.limit : null};
     }
     function sameBody(first, second) {
       function canonical(value) {
@@ -540,7 +586,7 @@
       throw fault('The native page label list is too large to verify.','INVALID_RESPONSE');
     }
     async function finishPublication(page, receipt) {
-      insightSnapshot=null;insightRevision++;
+      insightSnapshot=null;insightRevision++;searchSnapshots.clear();
       if(!page.hasStyleMarker){savePending(null);return page;}
       receipt=Object.assign({},receipt||{title:page.title,parentId:page.parentId,html:page.html},{id:page.id,version:page.version,labelsPending:true});savePending(receipt);
       try {
@@ -584,8 +630,9 @@
       var attachmentsPending=input.attachmentsPending===true&&!input.id;
       var editorHtml=typeof input.html==='string'?input.html:'';if(editorHtml.trim())validateHTML(editorHtml);else if(!summary&&!attachmentsPending)throw fault('Write some article content or a summary before publishing.','INVALID_CONTENT');
       var parentId = numeric(input.parentId || pages.insights, 'Insights parent page ID');
-      if (![pages.insights, pages.resources].map(String).includes(parentId)) throw fault('Choose the configured Insights or Resources collection.', 'INVALID_SCOPE');
       var id = input.id ? numeric(input.id, 'article page ID') : null;
+      var legacyResource = parentId === String(pages.resources) && (id || pending && pending.parentId === parentId);
+      if (parentId !== String(pages.insights) && !legacyResource) throw fault('New articles are published in Insights.', 'INVALID_SCOPE');
       if(id&&pending&&!pending.labelsPending)throw fault('Resolve the earlier unconfirmed publication before updating another page.','PENDING_PUBLICATION');
       var html=toStorage(editorHtml,id||(pending&&pending.labelsPending&&pending.id)||null,context,summary,!id);
       mutation = true;
@@ -952,8 +999,7 @@
       var response=await w.fetch(cfg.contextPath+'/rest/api/content/'+id+'?expand=space,ancestors,metadata.labels,version,version.by,history,history.createdBy',{credentials:'same-origin',headers:{Accept:'application/json'},signal:controller.signal});
       if(!response.ok)return false;
       var p=await response.json();
-      var ancestors=p.ancestors||[],valid=generation===epoch && String(p.id)===id && p.type==='page' && p.status==='current' && p.space?.key===cfg.spaceKey &&
-        (id===cfg.rootPageId || ancestors.some(function(a){return String(a.id)===cfg.rootPageId;}));
+      var ancestors=p.ancestors||[],valid=generation===epoch && String(p.id)===id && p.type==='page' && p.status==='current' && p.space?.key===cfg.spaceKey;
       if(valid){
         var sameRevision=!!renderedVersion&&renderedVersion===String(p.version?.number);
         var renderedTitle=meta('page-title')||w.MosaicNativePage?.title(w.MosaicNativePage.findContent())||'';
@@ -1697,9 +1743,20 @@
       !/[?&](?:pageVersion|preview|mosaicNativeUi)=/.test(w.location.search)&&
       !d.querySelector('#editpageform,#createpageform,#content-editor,body.contenteditor');
   }
-  function visibility(){widgets.forEach(function(item){item.host.hidden=!allowed()||/^#\/(?:new|edit)(?:[/?]|$)/.test(w.location.hash);if(item.host.hidden)item.menu.close(false);});}
-  function boot(config){if(!allowed()){visibility();return;}if(!w.MosaicPopover)return;var cfg=w.MosaicConfig.resolve(config);d.querySelectorAll('[data-mosaic-add-page]').forEach(function(host){if(widgets.some(function(item){return item.host===host;}))return;var menu=w.MosaicPopover.mount(host,{label:'Add page',placeholder:'Add page',options:[{value:'insights',label:'Insight'},{value:'resources',label:'Resource'}],retainFocus:false,onChange:function(parent){w.location.assign(w.MosaicConfig.page(cfg,'home')+'#/new?parent='+parent);}});var plus=w.MosaicSearch.icon('M12 5v14M5 12h14');plus.classList.add('mosaic-add-icon');menu.trigger.prepend(plus);widgets.push({host:host,menu:menu});});if(!started){w.addEventListener('hashchange',visibility);started=true;}visibility();}
-  function destroy(){widgets.splice(0).forEach(function(item){item.menu.destroy();});w.removeEventListener('hashchange',visibility);started=false;}
+  function visibility(){widgets.forEach(function(item){item.host.hidden=!allowed()||/^#\/(?:new|edit)(?:[/?]|$)/.test(w.location.hash);});}
+  function boot(config){
+    if(!allowed()){visibility();return;}
+    var cfg=w.MosaicConfig.resolve(config);
+    d.querySelectorAll('[data-mosaic-add-page]').forEach(function(host){
+      if(widgets.some(function(item){return item.host===host;}))return;
+      var link=d.createElement('a');link.className='mo-choice mosaic-add-page';
+      link.href=w.MosaicConfig.page(cfg,'home')+'#/new';link.setAttribute('aria-label','Add page');
+      var plus=w.MosaicSearch.icon('M12 5v14M5 12h14');plus.classList.add('mosaic-add-icon');
+      link.append(plus,d.createTextNode('Add page'));host.append(link);widgets.push({host:host,link:link});
+    });
+    if(!started){w.addEventListener('hashchange',visibility);started=true;}visibility();
+  }
+  function destroy(){widgets.splice(0).forEach(function(item){item.link.remove();});w.removeEventListener('hashchange',visibility);started=false;}
   w.MosaicNavbar={boot:boot,destroy:destroy};
 })(window,document);
 
@@ -1899,155 +1956,322 @@
 })(window,document);
 
 ;
-/* Mosaic Resources: native Confluence pages and explicitly configured links. */
-(function (w) {
+/* Shared bookmarks: the native JSON attachment is canonical; this property only
+ * serializes writes. Confluence attachment uploads do not expose a CAS version.
+ * API references: developer.atlassian.com/server/confluence/rest/v1000/api-group-content-property/
+ * and developer.atlassian.com/server/confluence/rest/v900/api-group-attachments/ . */
+(function (root) {
   'use strict';
-  if (w.MosaicResources) return;
-  var instances = new WeakMap(), sequence = 0;
-  function text(value) { return typeof value === 'string' ? value.trim() : ''; }
-  // Browse return contract: a positive start requires up to 100 ascending prior
-  // cursors, beginning at 0. Search routes have a separate owner.
-  function restorePosition() {
-    var empty = {start:0,history:[]}, hash = w.location.hash.slice(1), parts = hash.split('?');
-    if (parts.length > 2 || parts[0] && parts[0] !== '/') return empty;
-    var params = new URLSearchParams(parts[1] || ''), known = new Set();
-    for (var pair of params) { if (!['start','history'].includes(pair[0]) || known.has(pair[0])) return empty; known.add(pair[0]); }
-    var raw = params.get('start'); if (raw === null) return empty;
-    if (!/^(?:0|[1-9]\d{0,6})$/.test(raw) || Number(raw) > 1000000) return empty;
-    var position = Number(raw); if (!position) return empty;
-    var cursors = (params.get('history') || '').split(',');
-    if (cursors.length > 100 || cursors.some(function (value) { return !/^(?:0|[1-9]\d{0,6})$/.test(value) || Number(value) >= position; })) return empty;
-    var history = cursors.map(Number);
-    if (history[0] !== 0 || history.some(function (value, index) { return index > 0 && value <= history[index - 1]; })) return empty;
-    return {start:position,history:history};
+  var CATALOG='mosaic-resources.json', LOCK='mosaic-resources-write-v1';
+  var MAX_IMAGE=5*1024*1024, MAX_JSON=2*1024*1024, MAX_LINKS=5000;
+  var REQUEST_MS=15000, LEASE_MS=60000;
+  function fault(message,code,status){var error=new Error(message);error.code=code;if(status)error.status=status;return error;}
+  function cancelled(signal){if(signal?.aborted)throw fault('The request was cancelled.','ABORTED');}
+  function text(value,name,max,required){if(typeof value!=='string'||value.length>max||/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value))throw fault('Use a valid '+name+' of '+max+' characters or fewer.','INVALID_INPUT');value=value.trim();if(required&&!value)throw fault('Enter a '+name+'.','INVALID_INPUT');return value;}
+  function linkURL(value){value=text(value,'URL',2048,true);var url;try{url=new URL(value);}catch(_){throw fault('Enter an absolute http or https URL.','INVALID_INPUT');}if(!/^https?:$/.test(url.protocol)||url.username||url.password||/[\u0000-\u0020\u007f\\]/.test(value))throw fault('Enter an http or https URL without credentials or spaces.','INVALID_INPUT');if(url.href.length>2048)throw fault('Use a URL of 2048 characters or fewer after URL encoding.','INVALID_INPUT');return url.href;}
+  function create(config,dependencies){
+    config=config||{};var env=dependencies||{},context=config.contextPath||'/confluence',pageId=String(config.attachmentPageId||'3981001251'),space=config.spaceKey||'mosaic';
+    if(!/^\/[a-z0-9_-]+(?:\/[a-z0-9_-]+)*$/i.test(context)||!/^[1-9]\d{0,19}$/.test(pageId)||space!=='mosaic')throw fault('Configure the Mosaic attachment page and context path.','CONFIGURATION');
+    var location=env.location||root.location,origin=location?.origin;
+    if(!origin||!/^https?:\/\//.test(origin))throw fault('Open Resources on its Confluence site.','CONFIGURATION');
+    var fetcher=env.fetch||root.fetch?.bind(root),Crypto=env.crypto||root.crypto,Form=env.FormData||root.FormData,BlobType=env.Blob||root.Blob,Controller=env.AbortController||root.AbortController;
+    var setTimer=env.setTimeout||root.setTimeout.bind(root),clearTimer=env.clearTimeout||root.clearTimeout.bind(root),now=env.now||Date.now;
+    if(!fetcher||!Controller)throw fault('This browser cannot load the shared resource library.','UNAVAILABLE');
+    var base=context+'/rest/api/content/'+pageId,property=base+'/property/'+LOCK,busy=false;
+    function imageURL(value){
+      if(typeof value!=='string'||value.length>2300||/[\u0000-\u0020\u007f\\]/.test(value))throw fault('The resource image is not a valid Mosaic attachment.','INVALID_CATALOG');
+      var url;try{url=new URL(value,origin);}catch(_){throw fault('The resource image is invalid.','INVALID_CATALOG');}
+      var prefix=context+'/download/attachments/'+pageId+'/';
+      if(url.origin!==origin||url.username||url.password||url.hash||!url.pathname.startsWith(prefix)||!/^mosaic-resource-[a-z0-9-]+\.(?:png|jpe?g|webp)$/i.test(url.pathname.slice(prefix.length)))throw fault('The resource image is outside the Mosaic attachment page.','INVALID_CATALOG');
+      return url.pathname+url.search;
+    }
+    function normalizeLink(value){
+      if(!value||typeof value!=='object'||Array.isArray(value)||typeof value.id!=='string'||!/^resource-[a-f0-9]{32}$/.test(value.id))throw fault('The resource catalogue contains an invalid link.','INVALID_CATALOG');
+      var result={id:value.id,title:text(value.title,'title',160,true),url:linkURL(value.url),description:text(value.description==null?'':value.description,'description',1000,false)};
+      if(value.image!=null)result.image=imageURL(value.image);return result;
+    }
+    function catalog(value){
+      if(!value||!Number.isSafeInteger(value.version)||value.version<1||!Array.isArray(value.links)||value.links.length>MAX_LINKS)throw fault('The resource catalogue has an unsupported format.','INVALID_CATALOG');
+      var seen=new Set(),links=value.links.map(function(item){var link;try{link=normalizeLink(item);}catch(error){error.code='INVALID_CATALOG';throw error;}if(seen.has(link.id))throw fault('The resource catalogue contains duplicate identifiers.','INVALID_CATALOG');seen.add(link.id);return link;});return {version:value.version,links:links};
+    }
+    async function request(path,options){
+      options=options||{};cancelled(options.signal);var controller=new Controller(),sent=false,timeout=false,timer,abort;
+      var limit=new Promise(function(_,reject){timer=setTimer(function(){timeout=true;controller.abort();reject(fault('Confluence did not respond in time. Try again.','TIMEOUT'));},REQUEST_MS);abort=function(){controller.abort();reject(fault('The request was cancelled.','ABORTED'));};options.signal?.addEventListener('abort',abort,{once:true});});
+      try{
+        return await Promise.race([limit,(async function(){
+          sent=true;options.onDispatch?.();var response=await fetcher(path,{method:options.method||'GET',credentials:'same-origin',redirect:'error',cache:'no-store',signal:controller.signal,headers:Object.assign({Accept:'application/json'},options.form?{'X-Atlassian-Token':'nocheck'}:options.body?{'Content-Type':'application/json'}:{ }),body:options.form||options.body&&JSON.stringify(options.body)});
+          if(response.url&&new URL(response.url,origin).origin!==origin)throw fault('Confluence returned an unexpected location.','INVALID_RESPONSE');
+          if(response.status===404&&options.missing)return null;
+          if(!response.ok)throw fault(response.status===401||response.status===403?'Confluence did not allow this resource library request.':response.status===409?'The resource library changed during this request. Try again.':'Confluence could not complete the resource library request.','HTTP_ERROR',response.status);
+          var raw=await response.text();if(raw.length>MAX_JSON)throw fault('The resource catalogue response is too large.','INVALID_RESPONSE');
+          try{return JSON.parse(raw);}catch(_){throw fault('Confluence returned an unreadable response.','INVALID_RESPONSE');}
+        })()]);
+      }catch(error){if(!error.code)error=fault(timeout?'Confluence did not respond in time. Try again.':options.signal?.aborted?'The request was cancelled.':'Confluence could not be reached. Try again.',timeout?'TIMEOUT':options.signal?.aborted?'ABORTED':'NETWORK_ERROR');error.dispatched=sent;throw error;}
+      finally{clearTimer(timer);options.signal?.removeEventListener('abort',abort);}
+    }
+    async function verify(signal){
+      var page=await request(base+'?expand=space',{signal:signal});
+      if(String(page?.id)!==pageId||page.type!=='page'||page.status!=='current'||page.space?.key!==space)throw fault('The configured attachment page is outside Mosaic.','INVALID_SCOPE');
+    }
+    function metadata(item,name){
+      if(!item||!/^[1-9]\d*$/.test(String(item.id))||item.type!=='attachment'||item.status!=='current'||item.title!==name||String(item.container?.id)!==pageId||!Number.isSafeInteger(item.version?.number)||item.version.number<1)throw fault('Confluence returned an unexpected attachment.','INVALID_RESPONSE');
+      return {id:String(item.id),version:item.version.number};
+    }
+    async function attachment(name,signal){
+      var response=await request(base+'/child/attachment?'+new URLSearchParams({filename:name,expand:'container,version',limit:2}),{signal:signal});
+      if(!Array.isArray(response?.results)||response.results.length>1||response._links?.next)throw fault('The resource attachment could not be uniquely identified.','INVALID_RESPONSE');
+      return response.results.length?metadata(response.results[0],name):null;
+    }
+    async function snapshot(signal){
+      var item=await attachment(CATALOG,signal);if(!item)return {value:{version:0,links:[]},attachment:null};
+      var value=await request(context+'/download/attachments/'+pageId+'/'+CATALOG+'?'+new URLSearchParams({version:item.version,api:'v2'}),{signal:signal});
+      return {value:catalog(value),attachment:item};
+    }
+    async function load(options){var signal=options?.signal;await verify(signal);return (await snapshot(signal)).value;}
+    async function digest(bytes){var data=await Crypto.subtle.digest('SHA-256',bytes);return Array.from(new Uint8Array(data),function(byte){return byte.toString(16).padStart(2,'0');}).join('');}
+    async function prepare(input,signal){
+      if(!Form||!BlobType||!Crypto?.subtle||!Crypto?.getRandomValues||!(env.TextEncoder||root.TextEncoder))throw fault('This browser cannot save the shared resource library.','UNAVAILABLE');
+      cancelled(signal);input=input||{};var link={title:text(input.title,'title',160,true),url:linkURL(input.url),description:text(input.description==null?'':input.description,'description',1000,false)},file=input.imageFile,extension='',imageHash='';
+      if(file!=null){
+        var match=typeof file.name==='string'&&/\.(png|jpe?g|webp)$/i.exec(file.name),types={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp'};
+        if(!match||!Number.isSafeInteger(file.size)||file.size<1||file.size>MAX_IMAGE||file.type&&file.type!==types[match[1].toLowerCase()]||typeof file.arrayBuffer!=='function')throw fault('Choose a PNG, JPEG or WebP image up to 5 MiB.','INVALID_IMAGE');
+        extension=match[1].toLowerCase().replace('jpeg','jpg');var bytes=new Uint8Array(await file.arrayBuffer());cancelled(signal);
+        var valid=extension==='png'?bytes.length>=8&&[137,80,78,71,13,10,26,10].every(function(n,i){return bytes[i]===n;}):extension==='jpg'?bytes.length>=3&&bytes[0]===255&&bytes[1]===216&&bytes[2]===255:bytes.length>=12&&String.fromCharCode.apply(null,bytes.slice(0,4))==='RIFF'&&String.fromCharCode.apply(null,bytes.slice(8,12))==='WEBP';
+        if(!valid||bytes.length!==file.size)throw fault('The selected file is not a valid PNG, JPEG or WebP image.','INVALID_IMAGE');imageHash=await digest(bytes);
+      }
+      var Encoder=env.TextEncoder||root.TextEncoder,fingerprint=await digest(new Encoder().encode(JSON.stringify([link.title,link.url,link.description,imageHash])));cancelled(signal);
+      link.id='resource-'+fingerprint.slice(0,32);if(file)link.image=context+'/download/attachments/'+pageId+'/mosaic-'+link.id+'.'+extension+'?api=v2';
+      return {link:link,file:file,fingerprint:fingerprint,imageName:file?'mosaic-'+link.id+'.'+extension:''};
+    }
+    function token(){return Array.from(Crypto.getRandomValues(new Uint8Array(16)),function(n){return n.toString(16).padStart(2,'0');}).join('');}
+    function sameLink(a,b){return a.id===b.id&&a.title===b.title&&a.url===b.url&&a.description===b.description&&(a.image||'')===(b.image||'');}
+    function included(value,link){var item=value.links.find(function(candidate){return candidate.id===link.id;});if(item&&!sameLink(item,link))throw fault('The resource identifier already has different content.','CONFLICT');return !!item;}
+    function lockRecord(record){
+      var value=record?.value;
+      if(record?.key!==LOCK||!Number.isSafeInteger(record.version?.number)||record.version.number<1||value?.schema!==1||!['idle','preparing','committing'].includes(value.phase))throw fault('The resource write coordinator has an unsupported format.','INVALID_LOCK');
+      if(value.phase!=='idle'&&(!/^[a-f0-9]{32}$/.test(value.owner)||!/^[a-f0-9]{64}$/.test(value.fingerprint)||!Number.isSafeInteger(value.expiresAt)||value.phase==='preparing'&&value.expiresAt<1))throw fault('The resource write coordinator is invalid.','INVALID_LOCK');
+      if(value.phase==='committing'){normalizeLink(value.link);if(!Number.isSafeInteger(value.catalogVersion)||value.catalogVersion<1)throw fault('The pending resource write is invalid.','INVALID_LOCK');}
+      return record;
+    }
+    async function readLock(signal){var value=await request(property+'?expand=version',{signal:signal,missing:true});return value?lockRecord(value):null;}
+    async function writeLock(previous,value,signal){
+      var version=previous?previous.version.number+1:1,payload={key:LOCK,value:value};if(previous)payload.version={number:version};
+      var result=await request(previous?property:base+'/property',{method:previous?'PUT':'POST',body:payload,signal:signal});
+      function ordered(item){return item&&typeof item==='object'?Object.keys(item).sort().map(function(key){return [key,ordered(item[key])];}):item;}
+      lockRecord(result);if(result.version.number!==version||JSON.stringify(ordered(result.value))!==JSON.stringify(ordered(value)))throw fault('The resource write coordinator returned a different revision.','INVALID_LOCK');return result;
+    }
+    async function release(lock){try{await writeLock(lock,{schema:1,phase:'idle'});}catch(_){/* A subsequent writer reconciles a confirmed commit or an expired preparation. */}}
+    async function abandonUndispatched(owner){
+      // This invocation knows that it never sent the catalogue binary. Advancing
+      // the property revision also fences a delayed commit-marker PUT safely.
+      for(var n=0;n<3;n++){try{var observed=await readLock();if(!observed||observed.value.phase==='idle'||observed.value.owner!==owner)return true;await writeLock(observed,{schema:1,phase:'idle'});return true;}catch(error){if(error.status!==409)return false;}}
+      return false;
+    }
+    function uncertain(){return fault('Confluence has not confirmed the previous save yet. Retry save to check it; no duplicate link will be added.','SAVE_UNCERTAIN');}
+    async function acquire(item,signal){
+      for(var attempt=0;attempt<4;attempt++){
+        cancelled(signal);var previous=await readLock(signal);
+        if(previous?.value.phase==='committing'){
+          var recovered=await snapshot(signal);
+          if(!included(recovered.value,previous.value.link)||recovered.value.version<previous.value.catalogVersion)throw uncertain();
+          try{await writeLock(previous,{schema:1,phase:'idle'},signal);}catch(error){if(error.status===409)continue;throw error;}
+          if(included(recovered.value,item.link))return {recovered:recovered.value};continue;
+        }
+        if(previous?.value.phase==='preparing'&&previous.value.expiresAt>now())throw fault('Another resource is being saved. Try again in a moment.','WRITE_BUSY');
+        var value={schema:1,phase:'preparing',owner:token(),fingerprint:item.fingerprint,expiresAt:now()+LEASE_MS};
+        try{return {lock:await writeLock(previous,value,signal)};}catch(error){if(error.status===409)continue;if(!previous&&error.status===400&&await readLock(signal))continue;throw error;}
+      }
+      throw fault('The resource library is busy. Try again in a moment.','WRITE_BUSY');
+    }
+    async function upload(name,file,existing,signal,onDispatch){
+      var form=new Form();form.append('file',file,name);form.append('minorEdit','true');form.append('comment','Mosaic shared resource library');
+      return request(base+'/child/attachment'+(existing?'/'+existing.id+'/data':'')+'?expand=container,version',{method:'POST',form:form,signal:signal,onDispatch:onDispatch});
+    }
+    async function add(input,options){
+      if(busy)throw fault('A resource is already being saved.','WRITE_BUSY');busy=true;var signal=options?.signal,lease=null,committing=false,binaryDispatched=false;
+      try{
+        var item=await prepare(input,signal);await verify(signal);var acquired=await acquire(item,signal);if(acquired.recovered)return acquired.recovered;lease=acquired.lock;
+        var current=await snapshot(signal);if(included(current.value,item.link)){await release(lease);lease=null;return current.value;}
+        if(current.value.links.length>=MAX_LINKS||current.value.version===Number.MAX_SAFE_INTEGER)throw fault('The resource library is full.','CATALOG_FULL');
+        if(item.file){var image=await attachment(item.imageName,signal);if(!image)await upload(item.imageName,item.file,null,signal);}
+        cancelled(signal);if(lease.value.expiresAt<=now())throw fault('The resource save took too long. Retry save.','WRITE_BUSY');
+        var next={version:current.value.version+1,links:current.value.links.concat([item.link])},serialized=JSON.stringify(next);
+        if(serialized.length>MAX_JSON)throw fault('The resource library is too large.','CATALOG_FULL');
+        // The commit marker cannot expire: a timed-out attachment request can
+        // still finish later. A newer writer must first observe this exact link.
+        var commit={schema:1,phase:'committing',owner:lease.value.owner,fingerprint:item.fingerprint,expiresAt:0,link:item.link,catalogVersion:next.version};
+        committing=true;
+        try{lease=await writeLock(lease,commit,signal);}catch(error){
+          if(error.status>=400&&error.status<500){committing=false;throw error;}
+          // A lost coordinator response is recoverable while this invocation
+          // can prove it has not dispatched the attachment request yet.
+          var observed;try{observed=await readLock();}catch(_){throw error;}
+          if(observed?.value.phase!=='committing'||observed.value.owner!==commit.owner||observed.value.catalogVersion!==commit.catalogVersion||!sameLink(observed.value.link,item.link))throw error;
+          lease=observed;cancelled(signal);
+        }
+        try{await upload(CATALOG,new BlobType([serialized],{type:'application/json'}),current.attachment,signal,function(){binaryDispatched=true;});}
+        catch(error){if(!error.dispatched)throw error;if(error.status>=400&&error.status<500){committing=false;throw error;}throw uncertain();}
+        var confirmed=await snapshot(signal);if(confirmed.value.version<next.version||!included(confirmed.value,item.link))throw uncertain();
+        await release(lease);lease=null;return confirmed.value;
+      }catch(error){if(committing&&!binaryDispatched&&lease&&await abandonUndispatched(lease.value.owner)){committing=false;lease=null;}if(committing&&error.code!=='SAVE_UNCERTAIN')throw uncertain();throw error;}
+      finally{if(lease&&!committing)await release(lease);busy=false;}
+    }
+    return Object.freeze({load:load,add:add});
   }
-  function safeLink(value) {
-    if (!text(value) || /[\u0000-\u001f\u007f]/.test(value)) return '';
-    try { var url = new URL(value, w.location.href); return /^https?:$/.test(url.protocol) && !url.username && !url.password ? url.href : ''; } catch (_) { return ''; }
+  var api=Object.freeze({create:create});if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.MosaicResourceStore=api;
+})(typeof window!=='undefined'?window:globalThis);
+
+;
+/* Mosaic Resources: a shared bookmark library, independent of native page listings. */
+(function(w){
+  'use strict';
+  if(w.MosaicResources)return;
+  var instances=new WeakMap(),sequence=0,maximumImage=5*1024*1024;
+  function text(value){return typeof value==='string'?value.trim():'';}
+  function safeLink(value){
+    if(!text(value)||value.length>2048||!/^https?:\/\//i.test(value)||/[\u0000-\u0020\u007f]/.test(value))return '';
+    try{var url=new URL(value);return /^https?:$/.test(url.protocol)&&!url.username&&!url.password?url.href:'';}catch(_){return '';}
   }
-  function mount(target, options) {
-    if (!target || target.nodeType !== 1) throw new Error('A Resources container is required.');
-    options = options || {};
-    var config = options.config || {}, api = options.api, parent = String((config.pages || {}).resources || ''), context = config.contextPath || '/confluence';
-    if (!api || typeof api.children !== 'function' || !/^[1-9]\d{0,19}$/.test(parent) || !/^\/(?!\/)[a-z0-9/_-]*$/i.test(context)) throw new Error('Resources requires the configured native collection.');
-    if (instances.has(target)) instances.get(target).destroy();
-    var d = target.ownerDocument, uid = 'mrs-' + (++sequence), active = true, request = 0, pending = null, removers = [], start = 0, history = [], requestedStart = 0, requestedHistory = [], limit = 12;
-    var resolveReady, ready = new Promise(function (resolve) { resolveReady = resolve; });
-    // Initial content readiness is independent of later paging and media decoding.
-    function settleReady(status) { if (resolveReady) { resolveReady({status:status}); resolveReady = null; } }
-    context = context.replace(/\/+$/, '');
-    function el(tag, cls, value) { var n = d.createElement(tag); if (cls) n.className = cls; if (value !== undefined) n.textContent = value; return n; }
-    function add(parentNode, tag, cls, value) { var node = el(tag, cls, value); parentNode.append(node); return node; }
-    function listen(node, event, handler) { node.addEventListener(event, handler); removers.push(function () { node.removeEventListener(event, handler); }); }
-    function button(parentNode, label, action, cls) { var node = add(parentNode, 'button', cls || 'mrs-button', label); node.type = 'button'; node.dataset.action = action; return node; }
-    function nativePage(id) { return context + '/pages/viewpage.action?pageId=' + encodeURIComponent(id); }
-    function icon(kind) {
-      var svg = d.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('focusable', 'false');
-      var paths = {document:['M6 3h8l4 4v14H6z','M14 3v5h4','M9 12h6m-6 4h6'], link:['M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-2 2','M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l2-2'], arrow:['M4 12h15m-6-6 6 6-6 6'], search:['M16 16l5 5','M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0']};
-      (paths[kind] || paths.document).forEach(function (shape) { var p = d.createElementNS(svg.namespaceURI, 'path'); p.setAttribute('d', shape); svg.append(p); }); return svg;
+  function imageError(file){
+    if(!file)return '';
+    var ext=(file.name||'').toLowerCase().match(/\.(png|jpe?g|webp)$/),types={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp'};
+    if(!ext||file.type!==types[ext[1]])return 'Choose a PNG, JPEG or WebP image.';
+    if(!file.size||file.size>maximumImage)return 'Choose an image larger than 0 bytes and no larger than 5 MiB.';
+    return '';
+  }
+  function mount(target,options){
+    if(!target||target.nodeType!==1)throw Error('A Resources container is required.');
+    options=options||{};if(instances.has(target))instances.get(target).destroy();
+    var d=target.ownerDocument,config=options.config||{},context=config.contextPath||'/confluence';
+    if(!/^\/(?!\/)[a-z0-9/_-]*$/i.test(context))throw Error('Resources requires a local Confluence context path.');
+    context=context.replace(/\/+$/,'');
+    var uid='mrs-'+(++sequence),active=true,request=0,readController,saveController,store,links=[],loaded=false,removers=[],dialog=null,uncertainDraft=null;
+    var resolveReady,ready=new Promise(function(resolve){resolveReady=resolve;});
+    function settleReady(status){if(resolveReady){resolveReady({status:status});resolveReady=null;}}
+    function el(tag,cls,value){var node=d.createElement(tag);if(cls)node.className=cls;if(value!==undefined)node.textContent=value;return node;}
+    function add(parent,tag,cls,value){var node=el(tag,cls,value);parent.append(node);return node;}
+    function listen(node,type,handler,list){node.addEventListener(type,handler);(list||removers).push(function(){node.removeEventListener(type,handler);});}
+    function button(parent,label,action,cls){var node=add(parent,'button',cls||'mrs-button',label);node.type='button';if(action)node.dataset.action=action;return node;}
+    function icon(kind){
+      var svg=d.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');svg.setAttribute('focusable','false');svg.setAttribute('fill','none');svg.setAttribute('stroke','currentColor');svg.setAttribute('stroke-width','1.6');svg.setAttribute('stroke-linecap','round');svg.setAttribute('stroke-linejoin','round');
+      var paths={link:['M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-2 2','M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l2-2'],arrow:['M5 12h14m-6-6 6 6-6 6'],search:['M16 16l5 5','M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0'],plus:['M12 5v14M5 12h14'],close:['m6 6 12 12M18 6 6 18'],image:['M3 4h18v16H3z','m3 16 5-5 4 4 3-3 6 6','M16 8h.01'],check:['m5 12 4 4L19 6']};
+      (paths[kind]||paths.link).forEach(function(value){var path=d.createElementNS(svg.namespaceURI,'path');path.setAttribute('d',value);svg.append(path);});return svg;
     }
-    var root = el('section', 'mrs-root'); root.setAttribute('aria-label', 'Mosaic Resources');
-    var breadcrumb = add(root, 'nav', 'mrs-breadcrumb'); breadcrumb.setAttribute('aria-label', 'Breadcrumb');
-    var home = add(breadcrumb, 'a', '', 'Home'); home.href = nativePage(config.rootPageId || (config.pages || {}).home || '3961414585');
-    add(breadcrumb, 'span', 'mrs-breadcrumb-divider', '/').setAttribute('aria-hidden', 'true'); add(breadcrumb, 'span', '', 'Resources').setAttribute('aria-current', 'page');
-    var hero = add(root, 'div', 'mrs-hero'), image = add(hero, 'img', 'mrs-hero-image'); image.alt = ''; image.width = 800; image.height = 500; image.decoding = 'async'; image.loading = 'eager'; image.setAttribute('fetchpriority', 'high');
-    var file = /^mosaic-[a-z0-9-]+\.webp$/.test(config.resourcesBanner || '') ? config.resourcesBanner : 'mosaic-cover-15.webp';
-    var assetBase = config.assetBase || context + '/download/attachments/' + encodeURIComponent(config.attachmentPageId || '3981001251') + '/';
-    try { var assetURL = new URL(assetBase.replace(/\/?$/, '/') + file, w.location.href); if (assetURL.origin !== w.location.origin || !/^https?:$/.test(assetURL.protocol) || assetURL.username || assetURL.password) throw Error(); image.src = assetURL.href; } catch (_) { image.hidden = true; }
-    listen(image, 'error', function () { image.hidden = true; });
-    var heroMedia=w.MosaicMedia?.prepare(image,hero,{eager:true,priority:true});if(heroMedia)removers.push(function(){heroMedia.destroy();});
-    add(hero, 'h1', 'mrs-title', 'Resources');
-    var intro = add(root, 'div', 'mrs-intro'); add(intro, 'p', 'mrs-lead', 'Find the guides, documentation and useful links that support your work with Mosaic.');
-    if (typeof options.onSearch === 'function') {
-      var form = add(intro, 'form', 'mrs-search'); form.setAttribute('role', 'search'); form.append(icon('search'));
-      var label = add(form, 'label', 'mrs-sr', 'Search resources'); label.htmlFor = uid + '-query';
-      var query = add(form, 'input'); query.id = label.htmlFor; query.type = 'search'; query.name = 'q'; query.maxLength = 160; query.placeholder = 'Search resources'; query.autocomplete = 'off';
-      var submit = add(form, 'button', 'mrs-search-submit', 'Search'); submit.type = 'submit';
-      listen(form, 'submit', function (event) { event.preventDefault(); if (!active) return; var value = query.value.trim(); if (value) options.onSearch(value); else query.focus(); });
+    function getStore(){if(!store){if(!w.MosaicResourceStore?.create)throw Error('The bookmark library could not initialize. Refresh this page and try again.');store=w.MosaicResourceStore.create(config);}return store;}
+    function safeImage(value){
+      if(!text(value)||/[\u0000-\u001f\u007f]/.test(value))return '';
+      try{var url=new URL(value,w.location.href),base=context+'/download/attachments/'+String(config.attachmentPageId||'3981001251')+'/';return url.origin===w.location.origin&&!url.username&&!url.password&&url.pathname.startsWith(base)&&/^mosaic-resource-[a-z0-9_-]+\.(?:png|jpe?g|webp)$/i.test(url.pathname.slice(base.length))?url.href:'';}catch(_){return '';}
     }
-    var links = Array.isArray(config.resources) ? config.resources.map(function (entry) { return entry && {title:text(entry.title),description:text(entry.description),url:safeLink(entry.url)}; }).filter(function (entry) { return entry && entry.title && entry.url; }) : [];
-    function card(item, kind) {
-      var a = el('a', 'mrs-card'); a.href = item.url; a.dataset.kind = kind;
-      if (kind === 'page') a.setAttribute('data-mosaic-result', '');
-      var mark = add(a, 'span', 'mrs-card-icon'); mark.append(icon(kind === 'page' ? 'document' : 'link'));
-      add(a, 'span', 'mrs-card-kind', kind === 'page' ? 'Documentation' : 'Useful link');
-      add(a, 'h3', 'mrs-card-title', item.title);
-      add(a, 'p', 'mrs-card-description', item.description || (kind === 'page' ? 'Open this guide in Confluence.' : 'Open this resource.'));
-      var action = add(a, 'span', 'mrs-card-action', kind === 'page' ? 'Read guide' : 'Open resource'); action.append(icon('arrow'));
-      return a;
-    }
-    if (links.length) {
-      var shortcuts = add(root, 'section', 'mrs-section'); shortcuts.setAttribute('aria-labelledby', uid + '-links');
-      add(shortcuts, 'h2', 'mrs-heading', 'Tools & useful links').id = uid + '-links';
-      var quickGrid = add(shortcuts, 'div', 'mrs-grid'); links.forEach(function (entry) { quickGrid.append(card(entry, 'link')); });
-    }
-    var collection = add(root, 'section', 'mrs-section'); collection.setAttribute('aria-labelledby', uid + '-guides');
-    var sectionHeader = add(collection, 'div', 'mrs-section-header'), title = add(sectionHeader, 'h2', 'mrs-heading', 'Documentation & guides'); title.id = uid + '-guides'; title.tabIndex = -1;
-    var result = add(collection, 'div', 'mrs-results'), pager = add(collection, 'nav', 'mrs-pagination'); pager.setAttribute('aria-label', 'Resource pages'); pager.hidden = true;
-    var announcement = add(collection, 'span', 'mrs-sr'); announcement.setAttribute('role', 'status'); announcement.setAttribute('aria-live', 'polite');
-    target.append(root);
-    function fail(message) {
-      result.replaceChildren(); pager.hidden = true;
-      var box = add(result, 'div', 'mrs-state mrs-error'); box.setAttribute('role', 'alert'); add(box, 'h3', '', 'Resources could not load'); add(box, 'p', '', message || 'Try again when your connection is available.'); button(box, 'Try again', 'retry');
-    }
-    function normalize(data, position) {
-      if (!data || !Array.isArray(data.results) || data.results.length > limit || typeof data.hasMore !== 'boolean' || data.hasMore && (!Number.isInteger(data.nextStart) || data.nextStart <= position)) throw new Error('Confluence returned an invalid resource list. Try again.');
-      var seen = new Set();
-      return data.results.map(function (page) {
-        var id = page && String(page.id || '');
-        if (!/^[1-9]\d{0,19}$/.test(id) || !text(page.title) || seen.has(id)) throw new Error('Confluence returned an invalid resource page. Try again.');
-        seen.add(id); return {title:text(page.title),description:text(page.excerpt),url:nativePage(id)};
+    function normalize(data){
+      if(!data||!Number.isInteger(data.version)||data.version<0||!Array.isArray(data.links))throw Error('The bookmark library returned invalid data. Try again.');
+      var seen=new Set();return data.links.map(function(item){
+        var id=item&&text(item.id),title=item&&text(item.title),url=item&&safeLink(item.url),description=item&&text(item.description);
+        if(!id||seen.has(id)||!title||title.length>160||!url||description.length>1000)throw Error('The bookmark library contains an invalid link. Try again.');
+        seen.add(id);return {id:id,title:title,url:url,description:description,image:safeImage(item.image)};
       });
     }
-    function rememberPosition() {
-      var params = new URLSearchParams();
-      if (start) { params.set('start', String(start)); params.set('history', history.join(',')); }
-      try { w.history.replaceState(w.history.state, '', '#/' + (params.size ? '?' + params.toString() : '')); } catch (_) { /* Native navigation can continue when history replacement is unavailable. */ }
+    var root=el('section','mrs-root');root.setAttribute('aria-label','Mosaic Resources');
+    var breadcrumb=add(root,'nav','mrs-breadcrumb');breadcrumb.setAttribute('aria-label','Breadcrumb');
+    var home=add(breadcrumb,'a','','Home');home.href=context+'/pages/viewpage.action?pageId='+encodeURIComponent(config.rootPageId||config.pages?.home||'3961414585');
+    add(breadcrumb,'span','mrs-breadcrumb-divider','/').setAttribute('aria-hidden','true');add(breadcrumb,'span','','Resources').setAttribute('aria-current','page');
+    var hero=add(root,'div','mrs-hero'),heroImage=add(hero,'img','mrs-hero-image');heroImage.alt='';heroImage.width=800;heroImage.height=500;heroImage.loading='eager';heroImage.decoding='async';heroImage.setAttribute('fetchpriority','high');
+    var banner=config.resourcesBanner||config.resourceBanner,file=/^mosaic-[a-z0-9-]+\.webp$/.test(banner||'')?banner:'mosaic-resources-banner.webp',assetBase=config.assetBase||context+'/download/attachments/'+encodeURIComponent(config.attachmentPageId||'3981001251')+'/';
+    try{var assetURL=new URL(assetBase.replace(/\/?$/,'/')+file,w.location.href);if(assetURL.origin!==w.location.origin||!/^https?:$/.test(assetURL.protocol)||assetURL.username||assetURL.password)throw Error();heroImage.src=assetURL.href;}catch(_){heroImage.hidden=true;}
+    listen(heroImage,'error',function(){heroImage.hidden=true;});var heroMedia=w.MosaicMedia?.prepare(heroImage,hero,{eager:true,priority:true});if(heroMedia)removers.push(function(){heroMedia.destroy();});
+    add(hero,'h1','mrs-title','Resources');
+    var toolbar=add(root,'div','mrs-toolbar'),search=add(toolbar,'form','mrs-search');search.setAttribute('role','search');search.append(icon('search'));
+    var queryLabel=add(search,'label','mrs-sr','Search saved links');queryLabel.htmlFor=uid+'-query';
+    var query=add(search,'input');query.id=queryLabel.htmlFor;query.type='search';query.name='q';query.maxLength=250;query.placeholder='Search links';query.autocomplete='off';query.value=text(options.query).slice(0,250);
+    var searchButton=button(search,'Search',null,'mrs-search-submit');searchButton.type='submit';
+    var addLink=button(toolbar,'Add link','add','mrs-button mrs-button-primary mrs-add');addLink.prepend(icon('plus'));
+    var feedback=add(root,'p','mrs-feedback');feedback.setAttribute('role','status');feedback.hidden=true;
+    var result=add(root,'section','mrs-results');result.setAttribute('aria-label','Saved links');
+    var announcement=add(root,'span','mrs-sr');announcement.setAttribute('role','status');announcement.setAttribute('aria-live','polite');
+    target.append(root);
+    function card(item){
+      var anchor=el('a','mrs-card');anchor.href=item.url;anchor.dataset.kind='bookmark';
+      var logo=add(anchor,'span','mrs-card-icon'),fallback=icon('link');logo.append(fallback);
+      if(item.image){var image=add(logo,'img','mrs-card-logo');image.alt='';image.width=64;image.height=48;image.loading='lazy';image.decoding='async';image.src=item.image;fallback.setAttribute('hidden','');image.addEventListener('error',function(){image.hidden=true;fallback.removeAttribute('hidden');},{once:true});}
+      var panel=add(anchor,'div','mrs-card-panel');add(panel,'h3','mrs-card-title',item.title);if(item.description)add(panel,'p','mrs-card-description',item.description);
+      var action=add(panel,'span','mrs-card-action','Open link');action.append(icon('arrow'));return anchor;
     }
-    async function load(position, moveFocus, positions) {
-      if (!active) return;
-      var nextHistory = (positions || history).slice();
-      if (nextHistory.length > 100) nextHistory = [0].concat(nextHistory.slice(-99));
-      requestedStart = position; requestedHistory = nextHistory;
-      var token = ++request; if (pending) pending.abort(); pending = new w.AbortController();
-      result.setAttribute('aria-busy', 'true'); pager.hidden = true; result.replaceChildren();
-      var busy = add(result, 'p', 'mrs-loading', 'Loading resources…'); busy.setAttribute('role', 'status');
-      try {
-        var data = await api.children(parent, {start:position,limit:limit,signal:pending.signal});
-        if (!active || token !== request) { settleReady('cancelled'); return; }
-        var pages = normalize(data, position); start = position; history = nextHistory; result.replaceChildren();
-        if (pages.length) { var grid = add(result, 'div', 'mrs-grid'); pages.forEach(function (page) { grid.append(card(page, 'page')); }); }
-        else { var empty = add(result, 'div', 'mrs-state'), morePages = position || data.hasMore; add(empty, 'h3', '', morePages ? 'No resources on this page' : 'The library starts here'); add(empty, 'p', '', morePages ? 'Use the page controls to continue browsing.' : 'Guides and documentation will appear here when they are published.'); }
-        pager.replaceChildren();
-        if (history.length || data.hasMore) {
-          var previous = button(pager, 'Previous', 'previous'); previous.disabled = !history.length;
-          add(pager, 'span', 'mrs-page-label', pages.length ? 'Showing ' + (position + 1) + '–' + (position + pages.length) : 'No resources on this page');
-          var next = button(pager, 'Next', 'next'); next.disabled = !data.hasMore; if (data.hasMore) next.dataset.start = String(data.nextStart); pager.hidden = false;
-        }
-        announcement.textContent = pages.length + (pages.length === 1 ? ' resource loaded.' : ' resources loaded.');
-        rememberPosition();
-        if (moveFocus) title.focus({preventScroll:true});
-        settleReady('ready');
-      } catch (error) {
-        if (!active || token !== request) { settleReady('cancelled'); return; }
-        fail(error && error.message ? String(error.message) : 'The resource list is unavailable.');
-        settleReady('error');
-      } finally { if (active && token === request) result.removeAttribute('aria-busy'); }
+    function showState(title,message,error){result.replaceChildren();var box=add(result,'div','mrs-state'+(error?' mrs-error':''));if(error)box.setAttribute('role','alert');add(box,'h2','',title);add(box,'p','',message);return box;}
+    function renderLinks(){
+      if(!active||!loaded)return;
+      var words=query.value.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean),filtered=links.filter(function(item){var value=[item.title,item.description,item.url].join(' ').toLocaleLowerCase();return words.every(function(word){return value.includes(word);});});
+      result.replaceChildren();if(filtered.length){var grid=add(result,'div','mrs-grid');filtered.forEach(function(item){grid.append(card(item));});}
+      else if(links.length)showState('No matching links','Try another title, description or web address.');
+      else showState('Your resource library starts here','Add a useful link to share it with the Mosaic team.');
+      announcement.textContent=filtered.length+(filtered.length===1?' link':' links')+(words.length?' found.':' available.');
     }
-    listen(root, 'click', function (event) {
-      var control = event.target.closest('button[data-action]'); if (!active || !control || !root.contains(control) || control.disabled) return;
-      if (control.dataset.action === 'retry') load(requestedStart, true, requestedHistory);
-      else if (control.dataset.action === 'next') load(Number(control.dataset.start), true, history.concat([start]));
-      else if (control.dataset.action === 'previous' && history.length) load(history[history.length - 1], true, history.slice(0, -1));
-    });
-    function destroy() { if (!active) return; active = false; settleReady('cancelled'); request++; if (pending) pending.abort(); removers.splice(0).forEach(function (remove) { remove(); }); root.remove(); if (instances.get(target) === handle) instances.delete(target); }
-    var handle = Object.freeze({ready:ready,destroy:destroy}); instances.set(target, handle);
-    if (options.signal) { listen(options.signal, 'abort', destroy); if (options.signal.aborted) destroy(); }
-    if (active) { var restored = restorePosition(); load(restored.start, false, restored.history); }
-    return handle;
+    listen(query,'input',renderLinks);listen(query,'search',renderLinks);listen(search,'submit',function(event){event.preventDefault();renderLinks();});
+    var searchHandle=w.MosaicSearch?.enhance(root);if(searchHandle)removers.push(function(){searchHandle.destroy();});
+    async function load(){
+      if(!active)return;var token=++request;readController?.abort();readController=new w.AbortController();loaded=false;addLink.disabled=true;result.setAttribute('aria-busy','true');result.replaceChildren();add(result,'p','mrs-loading','Loading saved links…').setAttribute('role','status');
+      try{var data=await getStore().load({signal:readController.signal});if(!active||token!==request)return;links=normalize(data);loaded=true;renderLinks();settleReady('ready');}
+      catch(error){if(!active||token!==request)return;var box=showState('Resources could not load',text(error?.message)||'The bookmark library is unavailable. Try again.',true);button(box,'Try again','retry');settleReady('error');}
+      finally{if(active&&token===request){result.removeAttribute('aria-busy');addLink.disabled=false;}}
+    }
+    function closeDialog(force){
+      if(!dialog||dialog.saving&&!force)return;
+      var current=dialog;dialog=null;current.events.splice(0).forEach(function(remove){remove();});if(current.previewURL)w.URL.revokeObjectURL(current.previewURL);current.layer.remove();
+      current.inert.forEach(function(entry){if(entry.value===null)entry.node.removeAttribute('inert');else entry.node.setAttribute('inert',entry.value);});
+      d.body.style.overflow=current.overflow;if(!force&&active&&current.trigger?.isConnected)current.trigger.focus({preventScroll:true});
+    }
+    function openDialog(){
+      if(!active)return;if(dialog){dialog.panel.focus();return;}feedback.hidden=true;
+      var events=[],layer=el('div','mrs-dialog-layer'),panel=add(layer,'section','mrs-dialog');layer.setAttribute('data-mosaic-owned','');panel.setAttribute('role','dialog');panel.setAttribute('aria-modal','true');panel.setAttribute('aria-labelledby',uid+'-dialog-title');panel.tabIndex=-1;
+      var header=add(panel,'div','mrs-dialog-header');add(header,'h2','','Add a link').id=uid+'-dialog-title';var close=button(header,'',null,'mrs-dialog-close');close.setAttribute('aria-label','Close Add link');close.append(icon('close'));
+      add(panel,'p','mrs-dialog-intro','Save a useful destination in the shared Mosaic library.');
+      var form=add(panel,'form','mrs-dialog-form');form.noValidate=true;
+      function field(label,name,tag,max){var wrap=add(form,'div','mrs-field'),caption=add(wrap,'label','',label),input=add(wrap,tag||'input');caption.htmlFor=uid+'-'+name;input.id=caption.htmlFor;input.name=name;input.maxLength=max;return input;}
+      var title=field('Title','title','input',160),url=field('Web address','url','input',2048),description=field('Description (optional)','description','textarea',1000);title.required=true;url.required=true;url.type='url';url.placeholder='https://';description.rows=3;title.autocomplete='off';url.autocomplete='url';
+      var upload=add(form,'div','mrs-field mrs-upload');add(upload,'span','mrs-field-label','Image or logo (optional)');
+      var fileInput=add(upload,'input','mrs-file-input');fileInput.type='file';fileInput.accept='image/png,image/jpeg,image/webp';fileInput.hidden=true;
+      var choose=button(upload,'Choose image',null,'mrs-button mrs-image-choose');choose.prepend(icon('image'));add(upload,'p','mrs-field-hint','PNG, JPEG or WebP · up to 5 MiB');
+      var preview=add(upload,'div','mrs-image-preview');preview.hidden=true;var previewImage=add(preview,'img');previewImage.alt='Selected image preview';var filename=add(preview,'span'),remove=button(preview,'Remove image',null,'mrs-text-button');
+      var message=add(form,'p','mrs-dialog-message');message.id=uid+'-dialog-message';message.setAttribute('role','alert');message.hidden=true;
+      var actions=add(form,'div','mrs-dialog-actions'),cancel=button(actions,'Cancel',null,'mrs-button'),submit=button(actions,'Add link',null,'mrs-button mrs-button-primary');submit.type='submit';
+      var current={layer:layer,panel:panel,events:events,saving:false,previewURL:'',file:null,trigger:addLink,overflow:d.body.style.overflow,inert:[]};dialog=current;
+      d.body.append(layer);Array.from(d.body.children).forEach(function(node){if(node!==layer&&!['SCRIPT','STYLE','LINK'].includes(node.tagName)){current.inert.push({node:node,value:node.getAttribute('inert')});node.setAttribute('inert','');}});d.body.style.overflow='hidden';
+      function showMessage(value,invalid){message.textContent=value;message.hidden=!value;[title,url,description].forEach(function(input){input.removeAttribute('aria-invalid');input.removeAttribute('aria-describedby');});if(invalid){invalid.setAttribute('aria-invalid','true');invalid.setAttribute('aria-describedby',message.id);invalid.focus();}}
+      function lock(saving,uncertain){current.saving=saving;form.setAttribute('aria-busy',String(saving));[title,url,description,choose,remove,fileInput].forEach(function(control){control.disabled=saving||uncertain;});close.disabled=cancel.disabled=submit.disabled=saving;submit.textContent=saving?'Saving…':uncertain?'Retry save':'Add link';}
+      function setFile(file){
+        if(current.previewURL){w.URL.revokeObjectURL(current.previewURL);current.previewURL='';}current.file=file;fileInput.value='';preview.hidden=!file;previewImage.removeAttribute('src');previewImage.hidden=false;filename.textContent=file?file.name:'';
+        if(file&&w.URL.createObjectURL){current.previewURL=w.URL.createObjectURL(file);previewImage.src=current.previewURL;}else previewImage.hidden=true;
+      }
+      listen(choose,'click',function(){fileInput.click();},events);listen(remove,'click',function(){if(!current.saving&&!uncertainDraft){setFile(null);showMessage('');choose.focus();}},events);
+      listen(fileInput,'change',function(){if(current.saving||uncertainDraft)return;var file=fileInput.files?.[0];if(!file)return;var invalid=imageError(file);if(invalid){fileInput.value='';showMessage(invalid);choose.focus();return;}setFile(file);showMessage('');},events);
+      listen(previewImage,'error',function(){previewImage.hidden=true;},events);
+      listen(close,'click',function(){closeDialog();},events);listen(cancel,'click',function(){closeDialog();},events);
+      listen(layer,'click',function(event){if(event.target===layer)closeDialog();},events);
+      listen(d,'keydown',function(event){
+        if(dialog!==current)return;if(event.key==='Escape'){event.preventDefault();event.stopPropagation();closeDialog();return;}
+        if(event.key==='Tab'){var focusable=Array.from(panel.querySelectorAll('button,input,textarea,a[href],[tabindex]')).filter(function(node){return !node.disabled&&!node.closest('[hidden]')&&node.type!=='file'&&node.tabIndex>=0;});if(!focusable.length){event.preventDefault();panel.focus();return;}var first=focusable[0],last=focusable[focusable.length-1];if(event.shiftKey&&(d.activeElement===first||!panel.contains(d.activeElement))){event.preventDefault();last.focus();}else if(!event.shiftKey&&(d.activeElement===last||!panel.contains(d.activeElement))){event.preventDefault();first.focus();}}
+      },events);
+      listen(d,'focusin',function(event){if(dialog===current&&!panel.contains(event.target))panel.focus({preventScroll:true});},events);
+      listen(form,'submit',async function(event){
+        event.preventDefault();if(!active||dialog!==current||current.saving)return;
+        var draft=uncertainDraft||{title:text(title.value),url:text(url.value),description:text(description.value),imageFile:current.file||undefined};
+        if(!draft.title||draft.title.length>160||/[\u0000-\u001f\u007f]/.test(draft.title)){showMessage('Enter a title of 1–160 characters.',title);return;}
+        if(!safeLink(draft.url)){showMessage('Enter a complete http:// or https:// address, without a username or password.',url);return;}
+        if(draft.description.length>1000||/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(draft.description)){showMessage('Keep the description to 1,000 readable characters.',description);return;}
+        var invalid=imageError(draft.imageFile);if(invalid){showMessage(invalid);choose.focus();return;}
+        showMessage('');lock(true,false);saveController=new w.AbortController();
+        try{
+          var data=await getStore().add(draft,{signal:saveController.signal});if(!active||dialog!==current)return;
+          var updated=normalize(data);uncertainDraft=null;links=updated;loaded=true;++request;readController?.abort();result.removeAttribute('aria-busy');addLink.disabled=false;query.value='';query.dispatchEvent(new w.Event('input',{bubbles:true}));settleReady('ready');
+          lock(false,false);closeDialog();feedback.textContent='Link added.';feedback.hidden=false;
+        }catch(error){if(!active||dialog!==current)return;var uncertain=!!uncertainDraft||error?.code==='SAVE_UNCERTAIN';if(uncertain)uncertainDraft=draft;lock(false,uncertain);showMessage(text(error?.message)||'The link could not be saved. Try again.');submit.focus();}
+      },events);
+      if(uncertainDraft){title.value=uncertainDraft.title;url.value=uncertainDraft.url;description.value=uncertainDraft.description;setFile(uncertainDraft.imageFile||null);lock(false,true);showMessage('The previous save is awaiting confirmation. Retry save to check it before adding another link.');submit.focus();}else title.focus();
+    }
+    listen(root,'click',function(event){var control=event.target.closest('button[data-action]');if(!active||!control||!root.contains(control)||control.disabled)return;if(control.dataset.action==='add')openDialog();else if(control.dataset.action==='retry')load();});
+    function destroy(){if(!active)return;active=false;settleReady('cancelled');++request;readController?.abort();saveController?.abort();closeDialog(true);removers.splice(0).forEach(function(remove){remove();});root.remove();if(instances.get(target)===handle)instances.delete(target);}
+    var handle=Object.freeze({ready:ready,destroy:destroy});instances.set(target,handle);if(options.signal){listen(options.signal,'abort',destroy);if(options.signal.aborted)destroy();}if(active)load();return handle;
   }
-  w.MosaicResources = Object.freeze({mount:mount});
-}(window));
+  w.MosaicResources=Object.freeze({mount:mount});
+})(window);
 
 ;
 /* Mosaic Insights: native page discovery, full-text search and ordered paging. */
@@ -2146,9 +2370,9 @@
   function enhanceMedia(target){var media=w.MosaicMedia?.mount(target);if(media)cleanup.push(function(){media.destroy();});}
   function card(p){var summary=p.excerpt||'Open this page to learn more.';return '<a class="mo-card" href="'+esc(p.url)+'"><div class="mo-card-media" data-mosaic-media-frame><img data-mosaic-media class="mo-card-image" src="'+esc(img(p.id))+'" width="1200" height="667" loading="eager" decoding="async" alt=""></div><div class="mo-card-body"><div class="mo-meta">'+esc(date(p.created)||'Mosaic')+'</div><h3>'+esc(p.title)+'</h3><p>'+esc(summary)+'</p><span class="mo-link">Read article '+arrow+'</span></div></a>';}
   async function latest(target,token){target.setAttribute('aria-busy','true');try{var list=await api.children(cfg.pages.insights,{limit:3,signal:controller.signal});if(token!==generation)return;target.innerHTML=list.results.length?'<div class="mo-grid">'+list.results.map(card).join('')+'</div>':statusBox('Articles and updates will appear here when they are published.');enhanceMedia(target);}catch(e){if(token!==generation)return;errors(target,e,function(){latest(target,token);});}finally{if(token===generation)target.removeAttribute('aria-busy');}}
-  function home(token){root.innerHTML='<section class="mo-home-intro"><p class="mo-eyebrow">Welcome to Mosaic</p><h1>A connected future<br>for custody.</h1><p class="mo-lead">Understand the programme, find useful resources and discover what the team is working on.</p>'+searchForm('')+'<p class="mo-search-note">Search Mosaic pages, guides and articles.</p><div class="mo-shortcuts"><a href="'+href('about')+'">New to Mosaic?</a><a href="'+href('resources')+'">Find a resource</a><a href="'+href('team')+'">Meet the team</a></div></section><section class="mo-section"><div class="mo-section-top"><h2>Explore Mosaic</h2></div><div class="mo-grid">'+[
+  function home(token){root.innerHTML='<section class="mo-home-intro"><p class="mo-eyebrow">Welcome to Mosaic</p><h1>A connected future<br>for custody.</h1><p class="mo-lead">Understand the programme, find useful resources and discover what the team is working on.</p>'+searchForm('')+'<p class="mo-search-note">Search pages and articles across the whole Mosaic space.</p></section><section class="mo-section"><div class="mo-section-top"><h2>Explore Mosaic</h2></div><div class="mo-grid">'+[
     ['about','About us','Our purpose, the problems we are solving and how Mosaic fits together.','Discover Mosaic','mosaic-about'],
-    ['resources','Resources','Find documentation, practical guides and links to the tools you need.','Explore resources','mosaic-resources'],
+    ['resources','Resources','Your shared collection of useful tools, bookmarks and links.','Explore resources','mosaic-resources'],
     ['team','Meet the team','Find the people and teams behind the programme.','Meet the team','mosaic-team']
   ].map(function(a){return '<a class="mo-card" href="'+href(a[0])+'"><div class="mo-card-media" data-mosaic-media-frame><img data-mosaic-media class="mo-card-image" src="'+img(a[4])+'" width="1200" height="667" loading="eager" decoding="async" alt=""></div><div class="mo-card-body"><h3>'+a[1]+'</h3><p>'+a[2]+'</p><span class="mo-link">'+a[3]+arrow+'</span></div></a>';}).join('')+'</div></section><section class="mo-section mo-feature"><div class="mo-feature-title"><p class="mo-eyebrow">Built to work together</p><h2>Modular by design.<br>Connected by data.</h2><p>Explore the foundations of a more consistent, scalable custody platform.</p>'+link('about','Our approach')+'</div><div class="mo-feature-image" data-mosaic-media-frame tabindex="0" aria-label="Explore Mosaic’s approach"><img data-mosaic-media src="'+img('mosaic-foundations')+'" width="1200" height="667" loading="lazy" alt=""><button class="mo-feature-hint" aria-label="Show Mosaic approach">'+arrow+'</button><div class="mo-feature-panel"><h3>One connected picture</h3><p>Shared utilities, a standard data model and coordinated workflows across the custody lifecycle.</p>'+link('about','Explore Mosaic','mo-button')+'</div></div></section><section class="mo-section"><div class="mo-section-top"><h2>From Mosaic</h2>'+link('insights','View all insights')+'</div><div id="mo-latest"><div class="mo-grid" aria-hidden="true"><div class="mo-skeleton"></div><div class="mo-skeleton"></div><div class="mo-skeleton"></div></div></div></section>';bindSearch();var feature=root.querySelector('.mo-feature-image');feature.querySelector('button').addEventListener('click',function(){feature.removeAttribute('data-dismissed');feature.setAttribute('data-open','');});feature.addEventListener('pointerenter',function(){feature.removeAttribute('data-dismissed');});feature.addEventListener('focusin',function(){feature.removeAttribute('data-dismissed');});feature.addEventListener('keydown',function(e){if(e.key==='Escape'){feature.removeAttribute('data-open');root.querySelector('.mo-feature-title a').focus({preventScroll:true});feature.setAttribute('data-dismissed','');}});return latest(root.querySelector('#mo-latest'),token);}
   function about(){
@@ -2276,7 +2500,10 @@
     listen(d,'pointerdown',gesture,true);listen(d,'keydown',gesture,true);
     cleanup.push(function(){disposed=true;v.autoplay=false;listeners.splice(0).forEach(function(remove){remove();});pause();});sync();
   }
-  function resources(token,r){if(r.path==='/search'&&r.q){root.innerHTML=bread('Resources')+'<h1>Search resources</h1>'+searchForm(r.q,'Search resources')+'<a class="mo-link" href="#/">Back to resources</a><div id="mo-collection"></div>';bindSearch();return collection(root.querySelector('#mo-collection'),token,r,cfg.pages.resources);}root.innerHTML='';var component=w.MosaicResources.mount(root,{config:cfg,api:api,signal:controller.signal,onSearch:function(q){navigate('/search?q='+encodeURIComponent(q));}});cleanup.push(function(){component.destroy();});return component.ready;}
+  function resources(token,r){
+    root.innerHTML='';var component=w.MosaicResources.mount(root,{config:cfg,signal:controller.signal,query:r.q});
+    cleanup.push(function(){component.destroy();});return component.ready;
+  }
   function insights(){root.innerHTML='';var component=w.MosaicInsights.mount(root,{config:cfg,api:api,signal:controller.signal});cleanup.push(function(){component.destroy();});return component.ready;}
   function results(token,r){root.innerHTML=bread('Search')+'<h1>Search Mosaic</h1>'+searchForm(r.q)+'<section class="mo-section"><div class="mo-results-top"><h2>Results for “'+esc(r.q)+'”</h2><a class="mo-link" href="#/">Back to home</a></div><div id="mo-collection"></div></section>';bindSearch();return collection(root.querySelector('#mo-collection'),token,r);}
   async function collection(target,token,r,parent){target.setAttribute('aria-busy','true');target.innerHTML='<p class="mo-status" role="status">'+(r.q?'Searching…':'Loading pages…')+'</p>';try{var list=r.q?await api.search(r.q,{start:r.start,limit:12,signal:controller.signal,parentId:parent}):await api.children(parent,{start:r.start,limit:12,signal:controller.signal});if(token!==generation)return;target.innerHTML=list.results.length?list.results.map(function(p){return '<article class="mo-result"><div class="mo-meta">'+esc(date(p.updated)||'Mosaic page')+'</div><h3><a href="'+esc(p.url)+'">'+esc(p.title)+'</a></h3><p>'+esc(p.excerpt||'Open this page to learn more.')+'</p></article>';}).join(''):statusBox(r.q?'No matching pages. Try a shorter phrase or a different keyword.':'No resources have been published here yet.');if(list.results.length||r.start||list.hasMore){target.insertAdjacentHTML('beforeend','<nav class="mo-pagination" aria-label="Results pages"><span>'+(r.start?'':'')+'</span><span class="mo-meta">'+(list.results.length?'Showing '+(r.start+1)+'–'+(r.start+list.results.length):'No pages on this page')+'</span><span></span></nav>');var pager=target.querySelector('.mo-pagination');function page(start,label,slot){var a=d.createElement('a');a.className='mo-button mo-button-secondary';a.textContent=label;a.href=(r.q?'#/search?q='+encodeURIComponent(r.q)+'&':'#/?')+'start='+start;pager.children[slot].append(a);}if(r.start)page(Math.max(0,r.start-12),'Previous',0);if(list.hasMore)page(list.nextStart,'Next',2);}target.insertAdjacentHTML('afterbegin','<p class="mo-sr" role="status">'+list.results.length+' results loaded.</p>');}catch(e){if(token===generation)errors(target,e,function(){collection(target,token,r,parent);});}finally{if(token===generation)target.removeAttribute('aria-busy');}}
@@ -2291,7 +2518,7 @@
       if(!editorAPI||typeof editorAPI.mount!=='function')throw new Error('The editor could not finish loading. Try again.');
       root.innerHTML='';
       var instance=editorAPI.mount(root,{
-        api:api,config:cfg,page:page,parentId:r.parent==='resources'?cfg.pages.resources:cfg.pages.insights,
+        api:api,config:cfg,page:page,parentId:cfg.pages.insights,
         onCancel:function(){if(instance&&token===generation&&editor===instance)navigate('/');},
         onPublished:function(p){
           if(token!==generation||!instance||editor!==instance)return;
