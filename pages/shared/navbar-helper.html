@@ -1,4 +1,4 @@
-<!-- Put these widget slots inside the EXISTING Mosaic navBar actions, before Search/Edit. Keep the script in the same shared navBar macro. The hidden page-actions slot lets the shared widget render the action rail flush to the viewport right edge on normal Mosaic pages, excluding the landing page and editor/history views. No access preflight or extra header. -->
+<!-- Install this ENTIRE fragment, including the external script, in the EXISTING Mosaic navBar HTML macro before Search/Edit. Replace any older Add page control; do not keep a separate href="#" button. The shared loader is required and loads the editor on demand. The hidden page-actions slot lets the shared widget render the action rail flush to the viewport right edge on normal Mosaic pages, excluding the landing page and editor/history views. No access preflight or extra header. -->
 <span data-mosaic-add-page></span>
 <span data-mosaic-page-actions hidden></span>
-<script data-mosaic-startup-owner="navbar" src="/confluence/download/attachments/3981001251/mosaic-loader.min.js?v=6bf9e779867e"></script>
+<script data-mosaic-startup-owner="navbar" src="/confluence/download/attachments/3981001251/mosaic-loader.min.js?v=b37d10f0a4da"></script>

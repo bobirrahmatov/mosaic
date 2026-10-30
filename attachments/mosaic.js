@@ -1746,12 +1746,24 @@
       !d.querySelector('#editpageform,#createpageform,#content-editor,body.contenteditor');
   }
   function reset(item){item.link.removeAttribute('aria-busy');item.label.textContent='Add page';item.spinner.hidden=true;}
+  function remove(item){item.link.removeEventListener('click',item.activate);item.link.remove();}
+  function reconcile(){
+    widgets=widgets.filter(function(item){
+      if(item.host.isConnected&&item.link.parentElement===item.host)return true;
+      remove(item);return false;
+    });
+  }
   function visibility(){widgets.forEach(function(item){reset(item);item.host.hidden=!allowed()||/^#\/(?:new|edit)(?:[/?]|$)/.test(w.location.hash);});}
   function boot(config){
+    reconcile();
     if(!allowed()){visibility();return;}
     var cfg=w.MosaicConfig.resolve(config);
     d.querySelectorAll('[data-mosaic-add-page]').forEach(function(host){
-      if(widgets.some(function(item){return item.host===host;}))return;
+      var existing=widgets.find(function(item){return item.host===host;});
+      // A host navbar can be cloned or replace its inner markup. Rebuild stale
+      // Mosaic controls so a visible copied link also has a live click handler.
+      host.querySelectorAll('.mosaic-add-page').forEach(function(link){if(link!==existing?.link)link.remove();});
+      if(existing){existing.link.href=w.MosaicConfig.page(cfg,'home')+'#/new';return;}
       var link=d.createElement('a');link.className='mo-choice mosaic-add-page';
       link.href=w.MosaicConfig.page(cfg,'home')+'#/new';link.setAttribute('aria-label','Add page');
       var plus=w.MosaicSearch.icon('M12 5v14M5 12h14');plus.classList.add('mosaic-add-icon');
@@ -1772,7 +1784,7 @@
     });
     if(!started){w.addEventListener('hashchange',visibility);w.addEventListener('pageshow',visibility);started=true;}visibility();
   }
-  function destroy(){widgets.splice(0).forEach(function(item){item.link.removeEventListener('click',item.activate);item.link.remove();});w.removeEventListener('hashchange',visibility);w.removeEventListener('pageshow',visibility);started=false;}
+  function destroy(){widgets.splice(0).forEach(remove);w.removeEventListener('hashchange',visibility);w.removeEventListener('pageshow',visibility);started=false;}
   w.MosaicNavbar={boot:boot,destroy:destroy};
 })(window,document);
 
@@ -2556,6 +2568,7 @@
   }
   function team(){root.innerHTML='<div data-mosaic-team></div>';var component=w.MosaicTeamLoader.mount(root.querySelector('[data-mosaic-team]'),cfg);cleanup.push(function(){component.destroy();});return component.ready;}
   function render(event){
+    if(!mounted||root!==d.querySelector('[data-mosaic-root]'))return boot();
     var restoreSearchFocus=!!d.activeElement?.matches('form.mosaic-search input[type="search"]'),r=route();
     if(editor&&editor.isPublishing&&editor.isPublishing()){w.history.replaceState(null,'',lastHash||'#/');return pageReady;}
     if(editor&&editor.hasUnsavedChanges()&&!w.confirm('Leave this article and discard your unsaved changes?')){w.history.replaceState(null,'',lastHash||'#/');return pageReady;}
@@ -2581,9 +2594,40 @@
     }
     return pageReady;
   }
-  async function boot(){if(mounted)return pageReady;root=d.querySelector('[data-mosaic-root]');if(!root)return;cfg=w.MosaicConfig.resolve(w.MOSAIC_CONFIG);role=root.getAttribute('data-mosaic-role');if(!['home','about','resources','team','insights'].includes(role))return;var nativeId=(d.querySelector('meta[name="ajs-page-id"]')||{}).content;var nativeSpace=(d.querySelector('meta[name="ajs-space-key"]')||{}).content;try{nativeId=nativeId||(w.AJS&&w.AJS.Meta.get('page-id'));nativeSpace=nativeSpace||(w.AJS&&w.AJS.Meta.get('space-key'));}catch(_){}var nativeURL=new URL(w.location.href),overview=nativeURL.pathname===cfg.contextPath+'/spaces/'+cfg.spaceKey+'/overview'||nativeURL.pathname===cfg.contextPath+'/spaces/'+cfg.spaceKey+'/overview/';nativeId=nativeId||nativeURL.searchParams.get('pageId');if(overview&&(!nativeSpace||nativeSpace===cfg.spaceKey)){nativeId=nativeId||cfg.pages.home;if(String(nativeId)===String(cfg.pages.home))nativeSpace=nativeSpace||cfg.spaceKey;}if(forbidden())return;if(String(nativeId||'')!==String(cfg.pages[role])||nativeSpace!==cfg.spaceKey){root.innerHTML='<p>This Mosaic layout is only available on its configured page.</p>';w.MosaicStartup?.cancel();return;}mounted=true;w.MosaicLibraries.configure(cfg);api=w.MosaicAPI.create(cfg);w.MosaicHost.boot(cfg);w.addEventListener('hashchange',render);root.addEventListener('click',rememberReturn);return render();}
+  function matchesPage(config,pageRole){
+    var nativeId=d.querySelector('meta[name="ajs-page-id"]')?.content,
+      nativeSpace=d.querySelector('meta[name="ajs-space-key"]')?.content;
+    try{nativeId=nativeId||w.AJS?.Meta?.get('page-id');nativeSpace=nativeSpace||w.AJS?.Meta?.get('space-key');}catch(_){}
+    var url=new URL(w.location.href),queryId=url.searchParams.get('pageId'),
+      path=url.pathname.startsWith(config.contextPath+'/')?url.pathname.slice(config.contextPath.length):'',
+      modern=path.match(/^\/spaces\/([^/]+)\/pages\/([1-9]\d*)(?:\/.*)?$/),
+      overview=path==='/spaces/'+config.spaceKey+'/overview'||path==='/spaces/'+config.spaceKey+'/overview/';
+    // Exact modern page URLs are authoritative when Confluence metadata is late.
+    // Conflicting metadata or URL IDs must never activate another page's macro.
+    var ids=[nativeId,queryId,modern?.[2]].filter(Boolean),spaces=[nativeSpace,modern?.[1]].filter(Boolean);
+    if(overview){ids.push(config.pages.home);spaces.push(config.spaceKey);}
+    return ids.length>0&&spaces.length>0&&ids.every(function(id){return String(id)===String(config.pages[pageRole]);})&&spaces.every(function(space){return space===config.spaceKey;});
+  }
+  async function boot(){
+    var nextRoot=d.querySelector('[data-mosaic-root]'),nextRole=nextRoot?.getAttribute('data-mosaic-role');
+    cfg=w.MosaicConfig.resolve(w.MOSAIC_CONFIG);
+    var supported=['home','about','resources','team','insights'].includes(nextRole),blocked=forbidden(),valid=supported&&!blocked&&matchesPage(cfg,nextRole);
+    if(mounted&&root===nextRoot&&role===nextRole&&valid)return pageReady;
+    if(mounted)destroy();
+    if(!nextRoot||!supported||blocked)return;
+    if(!valid){nextRoot.innerHTML='<p>This Mosaic layout is only available on its configured page.</p>';w.MosaicStartup?.cancel();return;}
+    root=nextRoot;role=nextRole;mounted=true;
+    w.MosaicLibraries.configure(cfg);api=w.MosaicAPI.create(cfg);w.MosaicHost.boot(cfg);
+    w.addEventListener('hashchange',render);root.addEventListener('click',rememberReturn);return render();
+  }
   function rememberReturn(e){var a=e.target.closest('.mo-result a,[data-mosaic-result],.mrs-card,.mo-card');if(!a)return;var r=route();try{var u=new URL(a.href,w.location.href),id=u.searchParams.get('pageId');if(id)w.sessionStorage.setItem('mosaic.return-results',JSON.stringify({url:w.location.href,pageId:id,savedAt:Date.now()}));}catch(_){}}
-  function destroy(){root?.removeEventListener('click',rememberReturn);generation++;controller?.abort();editor?.destroy();cleanup.splice(0).forEach(function(fn){fn();});w.removeEventListener('hashchange',render);mounted=false;}
+  function destroy(){
+    root?.removeEventListener('click',rememberReturn);w.removeEventListener('hashchange',render);
+    generation++;mounted=false;controller?.abort();controller=null;
+    // Clear shared handles before component teardown, which may reenter destroy.
+    var previousEditor=editor,disposers=cleanup.splice(0);editor=null;root=null;role=null;pageReady=null;
+    previousEditor?.destroy();disposers.forEach(function(fn){fn();});
+  }
   w.MosaicSite={boot:boot,destroy:destroy,_test:{escape:esc,route:route,safeLink:nativeLink}};
   // The shared navbar bootstrap owns DOM readiness and initial activation.
 })(window,document);
@@ -2593,23 +2637,40 @@
 (function(w,d){
   'use strict';
   if(w.MosaicBootstrap)return;
-  var ready;
+  var ready,started=false,currentRoot=null,nativeController,generation=0;
   function start(){
+    started=true;
     var config=w.MOSAIC_CONFIG;
     w.MosaicLibraries.configure(config);w.MosaicNavbar.boot(config);
-    if(d.querySelector('[data-mosaic-root]'))return w.MosaicSite.boot();
+    currentRoot=d.querySelector('[data-mosaic-root]');
+    if(currentRoot)return w.MosaicSite.boot();
     var host=w.MosaicHost.boot(config);
-    return w.MosaicPageReady.run({host:host,native:true});
+    nativeController=new w.AbortController();
+    return w.MosaicPageReady.run({host:host,native:true,signal:nativeController.signal});
+  }
+  function adoptPage(){
+    var nextRoot=d.querySelector('[data-mosaic-root]');
+    if(!nextRoot||nextRoot===currentRoot)return;
+    // The host can insert or replace a page macro after the navbar has loaded.
+    // Retire prior readiness while preserving an unchanged page and its draft.
+    currentRoot=nextRoot;generation++;nativeController?.abort();nativeController=null;
+    var token=generation;
+    ready=Promise.resolve().then(function(){return token===generation?w.MosaicSite.boot():{status:'cancelled'};});
   }
   function boot(){
+    // Repeated navbar loaders may arrive after the page macro has started.
+    // Refresh their controls and retain readiness for the same page root.
+    if(started){w.MosaicNavbar.boot(w.MOSAIC_CONFIG);adoptPage();}
     if(!ready)ready=d.readyState==='loading'?new Promise(function(resolve,reject){
       d.addEventListener('DOMContentLoaded',function(){try{resolve(start());}catch(error){reject(error);}},{once:true});
     }):Promise.resolve().then(start);
+    var token=generation;
     // A navbar injected after a page macro adopts the existing readiness result.
     return ready.then(function(result){
+      if(token!==generation)return {status:'cancelled'};
       if(result?.status==='ready')w.MosaicStartup?.finish();else w.MosaicStartup?.cancel();
       return result;
-    },function(error){w.MosaicStartup?.cancel();throw error;});
+    },function(error){if(token!==generation)return {status:'cancelled'};w.MosaicStartup?.cancel();throw error;});
   }
   w.MosaicBootstrap=Object.freeze({boot:boot});
   boot().catch(function(error){w.MosaicHost?.error(error.message);});
