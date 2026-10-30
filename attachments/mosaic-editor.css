@@ -16,6 +16,15 @@
 #mosaic .mosaic-editor-preview-toggle,#mosaic .mosaic-editor-insert button,#mosaic .mosaic-editor-table-tools button{border:1px solid var(--editor-border);border-radius:5px;background:var(--editor-surface);color:var(--editor-text);padding:10px 16px;font-size:13px;min-height:40px}
 #mosaic .mosaic-editor-publish{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:41px;padding:10px 17px;border:1px solid #255be3;border-radius:5px;background:#255be3;color:#fff;font-size:13px}
 #mosaic .mosaic-editor-publish:hover:not(:disabled){background:#1c48bc;border-color:#1c48bc}
+/* Keep functional feedback visible, including when the host reduces decoration. */
+#mosaic .mosaic-editor-actions>button{background-image:none!important;box-shadow:none;transition:background-color .16s ease,border-color .16s ease,color .16s ease,opacity .12s ease!important}
+#mosaic .mosaic-editor-actions>button:active:not(:disabled){opacity:.72}
+#mosaic .mosaic-editor-actions>:is(.mosaic-editor-cancel,.mosaic-editor-focus-exit,.mosaic-editor-preview-toggle):hover:not(:disabled){background:var(--mosaic-theme-selected,#e6eefb);color:var(--editor-link)}
+#mosaic .mosaic-editor-actions>.mosaic-editor-publish{background:#255be3!important;border-color:#255be3!important;color:#fff!important}
+#mosaic .mosaic-editor-actions>.mosaic-editor-publish:hover:not(:disabled){background:#1c48bc!important;border-color:#1c48bc!important}
+#mosaic .mosaic-editor-actions>.mosaic-editor-publish:active:not(:disabled){background:#173a9b!important;border-color:#173a9b!important}
+#mosaic .mosaic-editor-actions>.mosaic-editor-publish[aria-busy=true]{opacity:1!important;cursor:wait}
+#mosaic .mosaic-editor-publish[aria-busy=true]>.mosaic-ui-icon{display:none!important}
 #mosaic .mosaic-editor .mosaic-ui-icon{width:20px;height:20px;max-width:none;flex:none;display:block;fill:none;stroke:currentColor;stroke-width:1.7}
 #mosaic .mosaic-editor-status{padding:13px 20px;margin:16px 28px 0;border:1px solid var(--editor-border);border-radius:6px;background:var(--editor-subtle);font-size:13px;line-height:1.6;overflow-wrap:anywhere}
 #mosaic .mosaic-editor-status.is-error{background:var(--mosaic-theme-dangerBg,#fff1f0);color:var(--mosaic-theme-danger,#b42318);border-color:var(--mosaic-theme-danger,#b42318)}
@@ -127,7 +136,8 @@
 #mosaic .mosaic-editor button:focus-visible,#mosaic .mosaic-editor input:focus-visible,#mosaic .mosaic-editor textarea:focus-visible,#mosaic .mosaic-editor a:focus-visible,#mosaic .mosaic-editor-body:focus-visible{outline:2px solid var(--mosaic-theme-focus,#255be3);outline-offset:3px}
 #mosaic .mosaic-editor-body:focus-visible{outline-offset:-3px}
 #mosaic .mosaic-editor [disabled]{opacity:.55;cursor:not-allowed}
-#mosaic .mosaic-editor-spinner{width:14px;height:14px;border:2px solid #ffffff55;border-top-color:#fff;border-radius:50%;animation:mosaic-editor-spin .8s linear infinite}
+#mosaic .mosaic-editor-spinner{display:block!important;position:static!important;box-sizing:border-box;flex:0 0 16px;width:16px!important;min-width:16px!important;max-width:16px!important;height:16px!important;margin:0!important;padding:0!important;border:2px solid #ffffff55!important;border-top-color:#fff!important;border-radius:50%!important;background:none!important;animation:mosaic-editor-spin .8s linear infinite!important}
+#mosaic .mosaic-editor-spinner[hidden]{display:none!important}
 #mosaic .mosaic-editor-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 #mosaic .mosaic-editor.is-expanded{position:fixed;top:var(--mosaic-editor-viewport-top,0px);left:var(--mosaic-editor-viewport-left,0px);width:var(--mosaic-editor-viewport-width,100vw);height:var(--mosaic-editor-viewport-height,100dvh);max-width:none;max-height:none;z-index:10010;background:var(--editor-surface);margin:0;padding:0;overflow:hidden;display:flex;flex-direction:column}
 #mosaic .mosaic-editor.is-expanded .mosaic-editor-form{display:flex;flex-direction:column;border:0;border-radius:0;flex:1;min-height:0;overflow:hidden}
@@ -140,7 +150,6 @@
 @keyframes mosaic-editor-spin{to{transform:rotate(360deg)}}
 @media(max-width:1100px){#mosaic .mosaic-editor-toolbar-break{display:none}}
 @media(max-width:760px){#mosaic .mosaic-editor{padding:18px 0 36px}#mosaic .mosaic-editor-topbar{padding:18px;flex-wrap:wrap;gap:15px;position:static}#mosaic .mosaic-editor-actions{gap:7px}#mosaic .mosaic-editor-heading h1{font-size:18px}#mosaic .mosaic-editor-main{padding:20px 16px}#mosaic .mosaic-editor-title{font-size:17px;padding:11px}#mosaic .mosaic-editor-body{padding:19px 16px;min-height:320px;font-size:14px}#mosaic .mosaic-editor-body p,#mosaic .mosaic-editor-body li{font-size:14px}#mosaic .mosaic-editor-toolbar{padding:7px;gap:1px}#mosaic .mosaic-editor-toolbar>button{flex-basis:32px;width:32px;min-width:32px;max-width:32px;height:32px;min-height:32px}#mosaic .mosaic-editor-format{width:120px;min-width:110px;max-width:120px}#mosaic .mosaic-editor-format .mo-choice{font-size:11px}#mosaic .mosaic-editor-divider{margin:0 4px}#mosaic .mosaic-editor-insert label{flex-basis:100%}#mosaic .mosaic-editor-status{margin:14px 16px 0}#mosaic .mosaic-editor-body-bottom{font-size:9px;padding:10px}#mosaic .mosaic-editor.is-expanded .mosaic-editor-topbar{padding:14px;gap:9px}#mosaic .mosaic-editor.is-expanded .mosaic-editor-main{padding:16px 14px 18px}#mosaic .mosaic-editor.is-expanded .mosaic-editor-focus-exit{padding-left:0;font-size:11px}}
-@media(prefers-reduced-motion:reduce){#mosaic .mosaic-editor-spinner{animation:none}}
 @media(max-width:600px){#mosaic .mosaic-editor-dialog-backdrop{padding:12px}#mosaic .mosaic-editor-dialog{border-radius:12px}#mosaic .mosaic-editor-dialog-heading{padding:20px 18px 16px}#mosaic .mosaic-editor-dialog-heading h2{font-size:22px}#mosaic .mosaic-editor-dialog .mosaic-editor-insert{padding:19px 18px 22px}#mosaic .mosaic-editor-dialog-grid{gap:12px}#mosaic .mosaic-editor-dialog-actions button{flex:1}}
 
 #mosaic[data-mosaic-root] :is(.mosaic-editor-body,.mosaic-editor-preview) :is(pre,code){background:var(--editor-subtle)!important;color:var(--editor-text)!important;border-color:var(--editor-border)!important;box-shadow:none!important;text-shadow:none!important}

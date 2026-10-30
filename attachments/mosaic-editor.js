@@ -107,8 +107,9 @@
       section.querySelectorAll('.mosaic-editor-insert input,.mosaic-editor-insert button,.mosaic-editor-table-tools button,[data-files],[data-remove-file],[data-insert-attachment]').forEach(function (node) { node.disabled = disabled; });
       section.querySelector('[data-more-attachments]').disabled = disabled || nativeBusy;
       publish.disabled = !ready || busy; cancel.disabled = busy; previewButton.disabled = !ready || busy;
+      publish.setAttribute('aria-busy', busy ? 'true' : 'false');
       section.querySelector('.mosaic-editor-spinner').hidden = !busy;
-      section.querySelector('[data-publish-label]').textContent = busy ? 'Publishing…' : uncertain ? 'Check publication' : uploadIncomplete ? 'Retry publication' : page ? 'Publish changes' : 'Publish';
+      section.querySelector('[data-publish-label]').textContent = busy ? uncertain ? 'Checking…' : 'Publishing…' : uncertain ? 'Check publication' : uploadIncomplete ? 'Retry publication' : page ? 'Publish changes' : 'Publish';
       form.setAttribute('aria-busy', busy ? 'true' : 'false');
     }
     function closePanels(restoreFocus) {

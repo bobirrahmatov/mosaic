@@ -86,13 +86,13 @@ html:not([data-color-mode])[data-theme="dark"],body:not([data-color-mode])[data-
 .mosaic-native-sidebar[data-mosaic-compact=true] :is(.mosaic-native-compact-link>.mosaic-native-label,.mosaic-native-toggle-label){display:none!important}
 .mosaic-native-sidebar[data-mosaic-compact=true] .mosaic-native-compact-link.mosaic-native-selected{background:#255be3!important;color:#fff!important}
 .mosaic-native-tooltip{position:fixed;z-index:10000;max-width:min(240px,calc(100vw - 16px));padding:8px 12px;border-radius:8px;background:var(--mosaic-theme-tooltip,#17385e);color:var(--mosaic-theme-tooltipText,#fff);box-shadow:0 4px 14px var(--mosaic-theme-shadow,#0002);font:13px/1.4 "Citi-Sans-Text",sans-serif;pointer-events:none}
-/* Home startup only. Busy progress remains functional in remote desktop reduced-motion mode. */
+/* Navbar fallback preserves the same single visible fill as early startup. */
 .mosaic-loading-overlay{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;box-sizing:border-box;padding:24px;overflow:auto;overscroll-behavior:contain;isolation:isolate;background-color:var(--mosaic-theme-page,#f3f5f8);background-image:radial-gradient(ellipse at center,transparent,#071b3230);color:var(--mosaic-theme-text,#17355f);font-family:"Citi-Sans-Text",sans-serif;outline:none}
 .mosaic-loading-panel{width:360px;max-width:100%;flex:none;box-sizing:border-box;padding:0;text-align:center}
 .mosaic-loading-logo{display:block!important;position:static!important;box-sizing:border-box;width:100%!important;min-width:0!important;height:auto!important;min-height:0!important;max-width:100%!important;max-height:none!important;aspect-ratio:1730/360;object-fit:contain;margin:0 auto 20px!important;padding:0!important;transform:none!important;border:0!important;border-radius:0!important;background:transparent!important}
 .mosaic-loading-message{margin:0 0 28px;font-size:14px;line-height:1.5;color:var(--mosaic-theme-muted,#61758c)}
-.mosaic-loading-track{display:block;width:112px;height:3px;margin:auto;overflow:hidden;border-radius:3px;background:var(--mosaic-theme-subtle,#e5eaf1)}
-.mosaic-loading-fill{display:block;height:100%;width:100%;border-radius:inherit;background:#255be3;transform:scaleX(0);transform-origin:left center;animation:mosaic-loading-fill 1s linear forwards!important;animation-play-state:paused!important}
+.mosaic-loading-track{display:block!important;position:relative!important;width:112px!important;height:3px!important;margin:auto!important;padding:0!important;border:0!important;overflow:hidden!important;border-radius:3px;background:var(--mosaic-theme-subtle,#e5eaf1)!important}
+.mosaic-loading-fill{display:block!important;position:absolute!important;inset:0!important;height:100%!important;width:100%!important;margin:0!important;padding:0!important;border:0!important;border-radius:inherit;background:#255be3!important;opacity:1!important;transform:scaleX(0);transform-origin:left center;animation:mosaic-loading-fill 1s linear forwards!important;animation-play-state:paused!important}
 .mosaic-loading-overlay[data-cycle-running] .mosaic-loading-fill{animation-play-state:running!important}
 .mosaic-loading-overlay[data-cycle-restart] .mosaic-loading-fill{animation:none!important;transform:scaleX(0)}
 .mosaic-loading-overlay[data-cycle-complete] .mosaic-loading-fill{animation:none!important;transform:scaleX(1)}
@@ -136,7 +136,7 @@ body[data-mosaic-host="active"]:not(:has([data-mosaic-root])) :is(#main-content.
 body[data-mosaic-host="active"]:not(:has([data-mosaic-root])) :is(#main-content.wiki-content,#main-content .wiki-content) pre code{background:transparent;color:inherit}
 body[data-mosaic-host="active"]:not(:has([data-mosaic-root])) :is(#main-content.wiki-content,#main-content .wiki-content) :is(td,th):not(.code *,.codeContent *,.syntaxhighlighter *){border-color:var(--mosaic-theme-border,#d5e1ee)}
 body[data-mosaic-host="active"]:not(:has([data-mosaic-root])) :is(#main-content.wiki-content,#main-content .wiki-content) th:not(.code *,.codeContent *,.syntaxhighlighter *){background:var(--mosaic-theme-subtle,#f0f5f9)}
-@media(prefers-reduced-motion:reduce){.mosaic-native-sidebar .mosaic-native-link{transition:none}.mosaic-loading-fill{animation:none!important;transform:scaleX(1);width:100%;opacity:.7}}
+@media(prefers-reduced-motion:reduce){.mosaic-native-sidebar .mosaic-native-link{transition:none}}
 @media(forced-colors:active){.mosaic-loading-track{border:1px solid CanvasText}.mosaic-loading-fill{background:Highlight;forced-color-adjust:none}.mosaic-native-sidebar .mosaic-native-link{border:1px solid transparent}}
 
 /* Keep native article media inside the readable page at narrow widths. */
@@ -322,7 +322,7 @@ body[data-mosaic-host="active"]:not(:has([data-mosaic-root])) :is(#main-content.
 #mosaic .mrs-root *,#mosaic .mrs-root *::before,#mosaic .mrs-root *::after,.mrs-dialog-layer *,.mrs-dialog-layer *::before,.mrs-dialog-layer *::after{box-sizing:border-box}
 #mosaic .mrs-root [hidden],.mrs-dialog-layer [hidden]{display:none!important}
 #mosaic .mrs-root :focus-visible,.mrs-dialog-layer :focus-visible{outline:3px solid var(--mrs-focus);outline-offset:4px}
-#mosaic .mrs-library{padding:24px;border:1px solid var(--mrs-border);border-radius:24px;background:var(--mrs-subtle);min-width:0}
+#mosaic .mrs-library{padding:0;border:0;border-radius:0;background:transparent;min-width:0}
 #mosaic .mrs-toolbar{display:flex;justify-content:space-between;align-items:center;gap:16px;margin:0 0 24px}
 #mosaic .mrs-search{display:flex;align-items:center;gap:10px;flex:0 1 340px;width:100%;max-width:340px;min-width:0;border:1px solid var(--mrs-border);border-radius:100px;background:var(--mrs-surface);padding:4px 5px 4px 15px}
 #mosaic .mrs-search:focus-within{border-color:var(--mrs-link)}
@@ -386,7 +386,7 @@ body[data-mosaic-host="active"]:not(:has([data-mosaic-root])) :is(#main-content.
 .mrs-dialog-layer .mrs-dialog-message{margin:0;padding:12px 14px;border-radius:10px;background:var(--mosaic-theme-dangerBg,#fff1f0);color:var(--mosaic-theme-danger,#b42318);font-size:13px;line-height:1.6;overflow-wrap:anywhere}
 .mrs-dialog-actions{display:flex;justify-content:flex-end;gap:10px;border-top:1px solid var(--mrs-border);padding-top:20px;margin-top:2px}
 @media(max-width:800px){#mosaic .mrs-grid{gap:18px}}
-@media(max-width:520px){#mosaic .mrs-library{padding:16px;border-radius:18px}#mosaic .mrs-toolbar{flex-wrap:wrap;gap:12px;margin:0 0 22px}#mosaic .mrs-toolbar .mrs-search,#mosaic .mrs-toolbar .mrs-search.mosaic-search{flex:1 1 100%;max-width:none}#mosaic .mrs-card{min-height:260px}#mosaic .mrs-state{padding:28px 22px}.mrs-dialog-layer{padding:12px}.mrs-dialog{padding:22px 18px;border-radius:20px;max-height:calc(100dvh - 24px)}.mrs-image-preview{flex-wrap:wrap}}
+@media(max-width:520px){#mosaic .mrs-toolbar{flex-wrap:wrap;gap:12px;margin:0 0 22px}#mosaic .mrs-toolbar .mrs-search,#mosaic .mrs-toolbar .mrs-search.mosaic-search{flex:1 1 100%;max-width:none}#mosaic .mrs-card{min-height:260px}#mosaic .mrs-state{padding:28px 22px}.mrs-dialog-layer{padding:12px}.mrs-dialog{padding:22px 18px;border-radius:20px;max-height:calc(100dvh - 24px)}.mrs-image-preview{flex-wrap:wrap}}
 @media(max-width:520px){#mosaic .mrs-toolbar .mrs-search.mosaic-search input,.mrs-dialog-layer .mrs-field>input:not([type=file]),.mrs-dialog-layer .mrs-field>textarea{font-size:16px}}
 @media(prefers-reduced-motion:reduce){#mosaic .mrs-card-panel,#mosaic .mrs-card-title,#mosaic .mrs-card-description,#mosaic .mrs-card-action,#mosaic .mrs-card-action svg{transition:none}#mosaic .mrs-card:hover .mrs-card-action svg,#mosaic .mrs-card:focus-visible .mrs-card-action svg{transform:none}}
 @media print{#mosaic .mrs-root{--mrs-surface:#fff;--mrs-text:#111;--mrs-muted:#444;--mrs-border:#ccc;--mrs-link:#1844b2}#mosaic .mrs-toolbar,#mosaic .mrs-feedback,#mosaic .mrs-card-action,.mrs-dialog-layer{display:none!important}#mosaic .mrs-library{padding:0;border:0;background:none}#mosaic .mrs-grid{grid-template-columns:repeat(2,minmax(0,1fr))}#mosaic .mrs-card{min-height:0;break-inside:avoid;border-color:#ccc;box-shadow:none}#mosaic .mrs-card-panel{background:none!important;color:#111!important}#mosaic .mrs-card-title,#mosaic .mrs-card-description{color:#111!important}#mosaic .mrs-card-description{-webkit-line-clamp:unset;display:block}}
@@ -464,6 +464,15 @@ body[data-mosaic-host=active] :is(#main,#main-content):has([data-mosaic-root]){b
 @media print{[data-mosaic-add-page]{display:none!important}}
 
 :is(#mosaic,body) [data-mosaic-add-page] a.mo-choice{text-decoration:none!important;display:inline-flex;align-items:center;justify-content:center;color:var(--mosaic-theme-text)}
+/* Navigation feedback belongs to this widget, not the native navbar controls. */
+:is(#mosaic,body) [data-mosaic-add-page] a.mosaic-add-page{background-image:none!important;transition:background-color .16s ease,border-color .16s ease,color .16s ease,opacity .12s ease!important}
+:is(#mosaic,body) [data-mosaic-add-page] a.mosaic-add-page:hover{background:var(--mosaic-theme-selected)!important;border-color:var(--mosaic-theme-link)!important;color:var(--mosaic-theme-link)!important}
+:is(#mosaic,body) [data-mosaic-add-page] a.mosaic-add-page:active:not([aria-busy=true]){opacity:.72}
+:is(#mosaic,body) [data-mosaic-add-page] a.mosaic-add-page[aria-busy=true]{background:var(--mosaic-theme-selected)!important;border-color:var(--mosaic-theme-link)!important;color:var(--mosaic-theme-link)!important;opacity:1!important;cursor:wait}
+:is(#mosaic,body) [data-mosaic-add-page] a.mosaic-add-page[aria-busy=true] .mosaic-add-icon{display:none!important}
+:is(#mosaic,body) [data-mosaic-add-page] .mosaic-add-spinner{display:block!important;position:static!important;box-sizing:border-box;flex:0 0 18px;width:18px!important;min-width:18px!important;max-width:18px!important;height:18px!important;margin:0!important;padding:0!important;border:2px solid var(--mosaic-theme-border)!important;border-top-color:currentColor!important;border-radius:50%!important;background:none!important;animation:mosaic-control-spin .8s linear infinite!important}
+:is(#mosaic,body) [data-mosaic-add-page] .mosaic-add-spinner[hidden]{display:none!important}
+@keyframes mosaic-control-spin{to{transform:rotate(360deg)}}
 
 /* Frames reserve the exact cover geometry before any network response. */
 :is(#mosaic,body[data-mosaic-native-page=true]) [data-mosaic-media-frame]{position:relative;overflow:hidden;background:linear-gradient(125deg,var(--mosaic-theme-subtle,#f0f5f9),var(--mosaic-theme-border,#d5e1ee),var(--mosaic-theme-subtle,#f0f5f9))!important}
