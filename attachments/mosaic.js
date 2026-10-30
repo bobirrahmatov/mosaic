@@ -747,14 +747,15 @@
   function prepare(image,frame,options){
     if(!image||image.tagName!=='IMG'||!frame)return null;
     if(entries.has(image))return entries.get(image);
-    options=options||{};var active=true,settled=false,decoding=false;
+    options=options||{};var active=true,settled=false,decoding=false,resolveReady;
+    var ready=new Promise(function(resolve){resolveReady=resolve;});
     frame.setAttribute('data-mosaic-media-frame','');
     frame.setAttribute('data-mosaic-media-state','loading');
     image.setAttribute('data-mosaic-media','');image.decoding='async';
     image.setAttribute('loading',options.eager?'eager':'lazy');
     if(options.priority)image.setAttribute('fetchpriority','high');
     function remove(){image.removeEventListener('load',loaded);image.removeEventListener('error',failed);}
-    function finish(state){if(!active||settled)return;settled=true;remove();frame.setAttribute('data-mosaic-media-state',state);}
+    function finish(state){if(!active||settled)return;settled=true;remove();frame.setAttribute('data-mosaic-media-state',state);resolveReady({status:state});}
     function failed(){finish('error');}
     function loaded(){
       if(!active||settled||decoding)return;
@@ -765,7 +766,7 @@
       Promise.resolve().then(function(){return image.decode();}).catch(function(){}).then(function(){if(active)finish(image.naturalWidth?'ready':'error');});
     }
     image.addEventListener('load',loaded);image.addEventListener('error',failed);
-    var handle={destroy:function(){active=false;remove();entries.delete(image);frame.removeAttribute('data-mosaic-media-state');}};entries.set(image,handle);
+    var handle={ready:ready,destroy:function(){active=false;remove();resolveReady({status:'cancelled'});entries.delete(image);frame.removeAttribute('data-mosaic-media-state');}};entries.set(image,handle);
     if(image.complete){if(image.naturalWidth)loaded();else if(image.getAttribute('src'))failed();}
     return handle;
   }
@@ -774,7 +775,7 @@
     target.querySelectorAll('img[data-mosaic-media]').forEach(function(image){var frame=image.closest('[data-mosaic-media-frame]');if(frame)handles.push(prepare(image,frame,{eager:image.getAttribute('loading')==='eager',priority:image.getAttribute('fetchpriority')==='high'}));});
     return {destroy:function(){handles.forEach(function(handle){handle?.destroy();});}};
   }
-  w.MosaicMedia=Object.freeze({prepare:prepare,mount:mount});
+  w.MosaicMedia=Object.freeze({prepare:prepare,mount:mount,ready:function(image){return entries.get(image)?.ready;}});
 })(window);
 
 ;
@@ -1185,7 +1186,7 @@
   function showOverlay() {
     // The shared startup owns the whole loading lifecycle, including dismissal
     // and timeout. A late host download must not open a second overlay.
-    if(!state.isHome||complete||forbidden()||customEditor()||overlay||w.location.hash&&!/^#\/?(?:\?.*)?$/.test(w.location.hash)||w.MosaicStartup)return;
+    if(complete||forbidden()||overlay||w.MosaicStartup||!d.querySelector('[data-mosaic-add-page],[data-mosaic-page-actions]'))return;
     overlayTarget=d.querySelector('[data-mosaic-root],#mosaic')||d.querySelector('#main-content')||d.body;
     overlayAttrs={busy:overlayTarget.getAttribute('aria-busy'),inert:overlayTarget.getAttribute('inert')};overlayTarget.setAttribute('aria-busy','true');if(overlayTarget!==d.body)overlayTarget.setAttribute('inert','');focusedBefore=d.activeElement;
     overlay=d.createElement('div');overlay.className='mosaic-loading-overlay';overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true');overlay.setAttribute('aria-label','Loading Mosaic');overlay.tabIndex=-1;
@@ -1195,7 +1196,7 @@
     d.body.append(overlay);overlay.focus({preventScroll:true});d.addEventListener('keydown',overlayKeys,true);overlayFill=fill;overlayFill.addEventListener('animationend',overlayAnimationEnded);d.addEventListener('visibilitychange',overlayVisibilityChanged);overlayReady=false;overlayCycleStarted=false;overlayMotion=w.matchMedia?.('(prefers-reduced-motion: reduce)');overlayCycleComplete=!!overlayMotion?.matches;if(overlayCycleComplete)overlay.setAttribute('data-cycle-complete','');else startOverlayCycle();overlayMotion?.addEventListener?.('change',overlayMotionChanged);overlayTimer=w.setTimeout(function(){error('Mosaic is taking longer to load. You can refresh the page to try again.');},Math.max(100,Math.min(Number(cfg.loadingTimeoutMs)||15000,60000)));
   }
   function hideOverlay(){w.clearTimeout(overlayTimer);if(overlayCycleFrame)w.cancelAnimationFrame(overlayCycleFrame);if(overlayFrame)w.cancelAnimationFrame(overlayFrame);overlayMotion?.removeEventListener?.('change',overlayMotionChanged);overlayFill?.removeEventListener('animationend',overlayAnimationEnded);d.removeEventListener('visibilitychange',overlayVisibilityChanged);overlayTimer=null;overlayCycleFrame=0;overlayFrame=0;overlayMotion=null;overlayFill=null;overlayReady=false;var restoreFocus=overlay&&d.activeElement===overlay;overlay?.remove();overlay=null;d.removeEventListener('keydown',overlayKeys,true);if(overlayTarget&&overlayAttrs){restore(overlayTarget,'aria-busy',overlayAttrs.busy);if(overlayTarget!==d.body)restore(overlayTarget,'inert',overlayAttrs.inert);}if(restoreFocus&&focusedBefore?.isConnected)focusedBefore.focus({preventScroll:true});overlayTarget=null;overlayAttrs=null;focusedBefore=null;}
-  function ready(){complete=true;readyBeforeBoot=true;if(state.active)refresh();if(forbidden()||customEditor()||w.location.hash&&!/^#\/?(?:\?.*)?$/.test(w.location.hash))hideOverlay();else{overlayReady=true;settleOverlay();}w.MosaicStartup?.finish();schedule();}
+  function ready(){complete=true;readyBeforeBoot=true;if(state.active)refresh();if(forbidden())hideOverlay();else{overlayReady=true;settleOverlay();}w.MosaicStartup?.finish();schedule();}
   function error(message){complete=true;readyBeforeBoot=true;hideOverlay();w.MosaicStartup?.cancel();var pending=d.querySelector('[data-mosaic-root] [data-mosaic-loading]');if(pending){var notice=d.createElement('p');notice.setAttribute('role','alert');notice.textContent=String(message||'Mosaic could not finish loading.');pending.replaceWith(notice);}if(state.active){var event=new w.CustomEvent('mosaic:host-error',{detail:{message:String(message||'Mosaic could not finish loading.')}});d.dispatchEvent(event);} }
   function activate(generation) {
     if(generation!==epoch||forbidden())return;
@@ -1229,12 +1230,11 @@
   function onPageHide(event){if(overlay){complete=true;readyBeforeBoot=true;hideOverlay();}if(!event.persisted)destroy();else hideTooltip();}
   function onPageShow(event){if(event.persisted){surfaceDirty=true;schedule();}}
   function onStylesheet(event){if(event.target.matches?.('link[rel="stylesheet"]'))refreshSurface();}
-  function onNavigate(){if(forbidden())destroy();else{if(customEditor())ready();else if(overlay&&w.location.hash&&!/^#\/?(?:\?.*)?$/.test(w.location.hash)){complete=true;readyBeforeBoot=true;hideOverlay();}schedule();}}
+  function onNavigate(){if(forbidden())destroy();else{if(overlay){complete=true;readyBeforeBoot=true;hideOverlay();}schedule();}}
   function boot(config) {
     var next=normalize(config);if(!next)return state;
-    var id=pageId();if(cfg&&state.pageId===id&&(state.active||state.pending)){if(forbidden())destroy();else{if(customEditor())ready();schedule();}return state;}
+    var id=pageId();if(cfg&&state.pageId===id&&(state.active||state.pending)){if(forbidden())destroy();else schedule();return state;}
     destroy();cfg=next;complete=readyBeforeBoot;state={active:false,pending:false,pageId:id,isHome:id===cfg.rootPageId,verified:Promise.resolve(false)};
-    if(customEditor()){complete=true;readyBeforeBoot=true;}
     if(!id||forbidden())return state;var generation=epoch;state.pending=true;
     var space=meta('space-key'),path=w.location.pathname;
     if(!space&&id===cfg.rootPageId&&(path===cfg.contextPath+'/spaces/'+cfg.spaceKey+'/overview'||path===cfg.contextPath+'/spaces/'+cfg.spaceKey+'/overview/'))space=cfg.spaceKey;
@@ -1245,6 +1245,106 @@
     w.removeEventListener('hashchange',onNavigate);w.removeEventListener('popstate',onNavigate);w.removeEventListener('resize',compact);w.removeEventListener('scroll',hideTooltip,true);w.removeEventListener('pagehide',onPageHide);w.removeEventListener('pageshow',onPageShow);d.removeEventListener('keydown',onKey);d.removeEventListener('load',onStylesheet,true);fontMedia?.removeEventListener?.('change',refreshSurface);fontMedia=null;
   }
   w.MosaicHost={boot:boot,ready:ready,error:error,destroy:destroy};
+})(window,document);
+
+;
+/* Mosaic initial-page readiness. Wait for useful content, not global network idle.
+ * Every listener has one owner and is disposed on completion or navigation. */
+(function(w,d){
+  'use strict';
+  if(w.MosaicPageReady)return;
+  function scope(parent){
+    var controller=new AbortController(),signal=controller.signal,cleanup=[],address=new URL(w.location.href);
+    function abort(){controller.abort();}
+    function hashIdentity(hash){return !hash||/^#\/?\??$/.test(hash)?'#/':hash;}
+    function changed(){if(w.location.pathname!==address.pathname||w.location.search!==address.search||hashIdentity(w.location.hash)!==hashIdentity(address.hash))abort();}
+    if(parent){if(parent.aborted)abort();else{parent.addEventListener('abort',abort,{once:true});cleanup.push(function(){parent.removeEventListener('abort',abort);});}}
+    w.addEventListener('pagehide',abort,{once:true});cleanup.push(function(){w.removeEventListener('pagehide',abort);});
+    ['hashchange','popstate'].forEach(function(name){w.addEventListener(name,changed);cleanup.push(function(){w.removeEventListener(name,changed);});});
+    return {signal:signal,close:function(){abort();cleanup.forEach(function(fn){fn();});}};
+  }
+  function bounded(task,ms,signal){
+    return new Promise(function(resolve){
+      var done=false,timer;
+      function finish(value){if(done)return;done=true;w.clearTimeout(timer);signal.removeEventListener('abort',cancel);resolve(value);}
+      function cancel(){finish({status:'cancelled'});}
+      if(signal.aborted){cancel();return;}
+      signal.addEventListener('abort',cancel,{once:true});timer=w.setTimeout(function(){finish({status:'timeout'});},ms);
+      Promise.resolve(task).then(function(value){finish({status:'ready',value:value});},function(error){finish({status:'error',error:error});});
+    });
+  }
+  function nativeSurface(signal){
+    return new Promise(function(resolve){
+      var observer,done=false;
+      function finish(value){if(done)return;done=true;observer?.disconnect();signal.removeEventListener('abort',cancel);resolve(value);}
+      function cancel(){finish(null);}
+      function check(){var surface=d.querySelector('[data-mosaic-native-surface]');if(surface)finish(surface);}
+      if(signal.aborted){cancel();return;}
+      signal.addEventListener('abort',cancel,{once:true});observer=new MutationObserver(check);observer.observe(d.documentElement,{subtree:true,childList:true,attributes:true,attributeFilter:['data-mosaic-native-surface']});check();
+    });
+  }
+  function initialContent(options){
+    // A denied host or cancelled component must release startup immediately,
+    // even if the other independent request does not settle or honour abort.
+    return new Promise(function(resolve,reject){
+      var values=[],remaining=2;
+      [options.initial,options.host?.verified].forEach(function(task,index){
+        Promise.resolve(task).then(function(value){
+          values[index]=value;
+          if(index===1&&value===false||index===0&&value?.status==='cancelled'||!--remaining)resolve(values);
+        },reject);
+      });
+    });
+  }
+  function visible(element){
+    // Visibility is intentionally hidden by startup. Geometry remains available.
+    var box=element.getBoundingClientRect();
+    return box.width>0&&box.height>0&&box.bottom>0&&box.right>0&&box.top<w.innerHeight&&box.left<w.innerWidth;
+  }
+  function mediaReady(element,signal){
+    var managed=element.tagName==='IMG'&&w.MosaicMedia?.ready(element);
+    if(managed)return managed;
+    return new Promise(function(resolve){
+      var events=element.tagName==='VIDEO'?['loadeddata','error','abort']:['load','error'],done=false;
+      function finish(){if(done)return;done=true;events.forEach(function(name){element.removeEventListener(name,finish);});signal.removeEventListener('abort',finish);resolve();}
+      if(signal.aborted){finish();return;}
+      signal.addEventListener('abort',finish,{once:true});events.forEach(function(name){element.addEventListener(name,finish);});
+      if(element.tagName==='VIDEO'?(element.readyState>=2||element.error):(element.complete||!element.getAttribute('src')))finish();
+    });
+  }
+  function paint(signal){
+    return new Promise(function(resolve){
+      var frame=0;
+      function finish(){if(frame)w.cancelAnimationFrame(frame);signal.removeEventListener('abort',finish);resolve();}
+      if(signal.aborted||!w.requestAnimationFrame){finish();return;}
+      signal.addEventListener('abort',finish,{once:true});frame=w.requestAnimationFrame(function(){frame=w.requestAnimationFrame(finish);});
+    });
+  }
+  async function run(options){
+    options=options||{};var life=scope(options.signal),signal=life.signal;
+    try{
+      var initial=await bounded(initialContent(options),12000,signal);
+      if(signal.aborted)return {status:'cancelled'};
+      if(initial.status==='error'){w.MosaicHost?.error(initial.error?.message);return initial;}
+      if(initial.status==='ready'&&(initial.value[1]===false||initial.value[0]?.status==='cancelled')){w.MosaicStartup?.cancel();return {status:'cancelled'};}
+      if(initial.status==='timeout'){w.MosaicHost?.error('Mosaic is taking longer to load. You can refresh the page to try again.');return initial;}
+      var target=options.target;
+      if(options.native){
+        var native=await bounded(nativeSurface(signal),4000,signal);
+        if(native.status==='timeout'){w.MosaicHost?.error('The Mosaic page content is not available yet. You can refresh the page to try again.');return native;}
+        target=native.value;
+      }
+      if(signal.aborted)return {status:'cancelled'};
+      // Visible media only: lazy offscreen covers and directory portraits do not
+      // hold the whole page hostage. Their reserved frames handle later loading.
+      var media=target?Array.from(target.querySelectorAll('img,video')).filter(function(element){return !element.matches('img.mt-photo')&&visible(element);}):[];
+      await bounded(Promise.all(media.map(function(element){return mediaReady(element,signal);}).concat(d.fonts?.ready||[])),4000,signal);
+      await bounded(paint(signal),250,signal);
+      if(signal.aborted)return {status:'cancelled'};
+      w.MosaicHost?.ready();return {status:'ready'};
+    }finally{life.close();}
+  }
+  w.MosaicPageReady=Object.freeze({run:run});
 })(window,document);
 
 ;
@@ -1706,19 +1806,24 @@
   function mount(target,config){
     if(instances.has(target))return instances.get(target);
     var active=true,component,attempt=0;
+    var resolveReady,ready=new Promise(function(resolve){resolveReady=resolve;});
+    function settleReady(status){if(resolveReady){resolveReady({status:status});resolveReady=null;}}
     function start(){
+      if(!active)return;
       var current=++attempt;target.replaceChildren();target.setAttribute('aria-busy','true');
       var status=d.createElement('p');status.className='mo-status';status.setAttribute('role','status');status.textContent='Loading programme diagrams…';target.append(status);
       load(config).then(function(pkg){
-        if(!active||current!==attempt||!target.isConnected)return;
+        if(!active||current!==attempt||!target.isConnected){settleReady('cancelled');return;}
         target.replaceChildren();component=pkg.renderer.mount(target,{data:pkg.data});
+        settleReady('ready');
       }).catch(function(error){
-        if(!active||current!==attempt||!target.isConnected)return;
+        if(!active||current!==attempt||!target.isConnected){settleReady('cancelled');return;}
         try{var base=baseFor(config);packages.delete(base);resources.delete(base+'mosaic-diagram-data.js?mosaicComponent='+revision);d.querySelectorAll('script[data-mosaic-component="diagrams"]').forEach(function(el){if(el.src.indexOf(base+'mosaic-diagram-data.js?')===0)el.remove();});}catch(_){}
         target.replaceChildren();var message=d.createElement('p');message.setAttribute('role','alert');message.textContent=error.message;var retry=d.createElement('button');retry.type='button';retry.className='mo-button mo-button-secondary';retry.textContent='Retry diagrams';retry.addEventListener('click',start);target.append(message,retry);
+        settleReady('error');
       }).finally(function(){if(active&&current===attempt)target.removeAttribute('aria-busy');});
     }
-    var handle={destroy:function(){if(!active)return;active=false;attempt++;component?.destroy();target.removeAttribute('aria-busy');instances.delete(target);}};
+    var handle={ready:ready,destroy:function(){if(!active)return;active=false;settleReady('cancelled');attempt++;component?.destroy();target.removeAttribute('aria-busy');instances.delete(target);}};
     instances.set(target,handle);start();return handle;
   }
   w.MosaicDiagramLoader={mount:mount};
@@ -1764,23 +1869,30 @@
   function mount(target,config){
     if(instances.has(target))return instances.get(target);
     var active=true,component,attempt=0;
+    var resolveReady,ready=new Promise(function(resolve){resolveReady=resolve;});
+    function settleReady(status){if(resolveReady){resolveReady({status:status});resolveReady=null;}}
     function start(){
       if(!active)return;
       var token=++attempt;target.replaceChildren();target.setAttribute('aria-busy','true');
       var p=d.createElement('p');p.className='mo-status';p.setAttribute('role','status');p.textContent='Loading Meet the team…';target.append(p);
       load(config).then(function(pkg){
-        if(!active||token!==attempt||!target.isConnected)return;
+        if(!active||token!==attempt||!target.isConnected){settleReady('cancelled');return;}
         var settings=Object.assign({},config,{people:Object.assign({},pkg.settings,config.people||{})});
         settings.people.pagination=Object.assign({},pkg.settings.pagination,(config.people||{}).pagination||{});
         target.replaceChildren();component=pkg.renderer.mount(target,{config:settings});
+        return Promise.resolve(component&&component.ready).then(function(result){
+          if(!active||token!==attempt||!target.isConnected){settleReady('cancelled');return;}
+          settleReady(result&&['error','cancelled'].includes(result.status)?result.status:'ready');
+        });
       }).catch(function(error){
-        if(!active||token!==attempt||!target.isConnected)return;
+        if(!active||token!==attempt||!target.isConnected){settleReady('cancelled');return;}
         try{var base=baseFor(config);packages.delete(base);clearScripts(base);}catch(_){}
         target.replaceChildren();var message=d.createElement('p');message.setAttribute('role','alert');message.textContent=error.message;
         var retry=d.createElement('button');retry.type='button';retry.className='mo-button mo-button-secondary';retry.textContent='Retry team';retry.addEventListener('click',start);target.append(message,retry);
+        settleReady('error');
       }).finally(function(){if(active&&token===attempt)target.removeAttribute('aria-busy');});
     }
-    var handle={destroy:function(){if(!active)return;active=false;attempt++;if(component)component.destroy();target.removeAttribute('aria-busy');instances.delete(target);}};
+    var handle={ready:ready,destroy:function(){if(!active)return;active=false;settleReady('cancelled');attempt++;if(component)component.destroy();target.removeAttribute('aria-busy');instances.delete(target);}};
     instances.set(target,handle);start();return handle;
   }
   w.MosaicTeamLoader={mount:mount};
@@ -1820,6 +1932,9 @@
     if (!api || typeof api.children !== 'function' || !/^[1-9]\d{0,19}$/.test(parent) || !/^\/(?!\/)[a-z0-9/_-]*$/i.test(context)) throw new Error('Resources requires the configured native collection.');
     if (instances.has(target)) instances.get(target).destroy();
     var d = target.ownerDocument, uid = 'mrs-' + (++sequence), active = true, request = 0, pending = null, removers = [], start = 0, history = [], requestedStart = 0, requestedHistory = [], limit = 12;
+    var resolveReady, ready = new Promise(function (resolve) { resolveReady = resolve; });
+    // Initial content readiness is independent of later paging and media decoding.
+    function settleReady(status) { if (resolveReady) { resolveReady({status:status}); resolveReady = null; } }
     context = context.replace(/\/+$/, '');
     function el(tag, cls, value) { var n = d.createElement(tag); if (cls) n.className = cls; if (value !== undefined) n.textContent = value; return n; }
     function add(parentNode, tag, cls, value) { var node = el(tag, cls, value); parentNode.append(node); return node; }
@@ -1899,7 +2014,7 @@
       var busy = add(result, 'p', 'mrs-loading', 'Loading resources…'); busy.setAttribute('role', 'status');
       try {
         var data = await api.children(parent, {start:position,limit:limit,signal:pending.signal});
-        if (!active || token !== request) return;
+        if (!active || token !== request) { settleReady('cancelled'); return; }
         var pages = normalize(data, position); start = position; history = nextHistory; result.replaceChildren();
         if (pages.length) { var grid = add(result, 'div', 'mrs-grid'); pages.forEach(function (page) { grid.append(card(page, 'page')); }); }
         else { var empty = add(result, 'div', 'mrs-state'), morePages = position || data.hasMore; add(empty, 'h3', '', morePages ? 'No resources on this page' : 'The library starts here'); add(empty, 'p', '', morePages ? 'Use the page controls to continue browsing.' : 'Guides and documentation will appear here when they are published.'); }
@@ -1912,9 +2027,11 @@
         announcement.textContent = pages.length + (pages.length === 1 ? ' resource loaded.' : ' resources loaded.');
         rememberPosition();
         if (moveFocus) title.focus({preventScroll:true});
+        settleReady('ready');
       } catch (error) {
-        if (!active || token !== request) return;
+        if (!active || token !== request) { settleReady('cancelled'); return; }
         fail(error && error.message ? String(error.message) : 'The resource list is unavailable.');
+        settleReady('error');
       } finally { if (active && token === request) result.removeAttribute('aria-busy'); }
     }
     listen(root, 'click', function (event) {
@@ -1923,8 +2040,8 @@
       else if (control.dataset.action === 'next') load(Number(control.dataset.start), true, history.concat([start]));
       else if (control.dataset.action === 'previous' && history.length) load(history[history.length - 1], true, history.slice(0, -1));
     });
-    function destroy() { if (!active) return; active = false; request++; if (pending) pending.abort(); removers.splice(0).forEach(function (remove) { remove(); }); root.remove(); if (instances.get(target) === handle) instances.delete(target); }
-    var handle = Object.freeze({destroy:destroy}); instances.set(target, handle);
+    function destroy() { if (!active) return; active = false; settleReady('cancelled'); request++; if (pending) pending.abort(); removers.splice(0).forEach(function (remove) { remove(); }); root.remove(); if (instances.get(target) === handle) instances.delete(target); }
+    var handle = Object.freeze({ready:ready,destroy:destroy}); instances.set(target, handle);
     if (options.signal) { listen(options.signal, 'abort', destroy); if (options.signal.aborted) destroy(); }
     if (active) { var restored = restorePosition(); load(restored.start, false, restored.history); }
     return handle;
@@ -1937,6 +2054,8 @@
 (function(w,d){'use strict';if(w.MosaicInsights)return;
   function mount(target,options){
     var cfg=options.config,api=options.api,dead=false,controller=new w.AbortController(),menus=[],mediaHandles=[],rows=[],nextStart=0,hasMore=false,busy=false,loadedPages=0,maxPages=50;
+    var resolveReady,ready=new Promise(function(resolve){resolveReady=resolve;});
+    function settleReady(status){if(resolveReady){resolveReady({status:status});resolveReady=null;}}
     var params=new URLSearchParams((w.location.hash.split('?')[1]||'')),query=(params.get('q')||'').slice(0,250),sort=params.get('sort')||'newest',restore=Math.min(maxPages,Math.max(1,Number(params.get('pages'))||1));
     if(!['newest','oldest','title'].includes(sort))sort='newest';
     // Old section links now open the full collection. Their page count referred
@@ -1944,7 +2063,7 @@
     if(params.has('topic')&&!options.signal?.aborted){params.delete('topic');params.delete('pages');restore=1;w.history.replaceState(null,'','#/?'+params.toString());}
     function el(tag,cls,text){var n=d.createElement(tag);if(cls)n.className=cls;if(text!=null)n.textContent=text;return n;}
     function add(parent,tag,cls,text){var n=el(tag,cls,text);parent.appendChild(n);return n;}
-    function abort(){controller.abort();}if(options.signal){if(options.signal.aborted)abort();else options.signal.addEventListener('abort',abort,{once:true});}
+    function abort(){controller.abort();settleReady('cancelled');}if(options.signal){if(options.signal.aborted)abort();else options.signal.addEventListener('abort',abort,{once:true});}
     var root=add(target,'section','mi-root');var heading=add(root,'header','mi-heading');var title=add(heading,'div');add(title,'p','mo-eyebrow','From across Mosaic');add(title,'h1','','Insights');add(title,'p','mo-lead','Ideas, updates and perspectives shaping the future of custody.');
     var filters=add(root,'div','mi-filters'),form=add(filters,'form','mi-search');form.setAttribute('role','search');
     var label=add(form,'label','mo-sr','Search insights');label.htmlFor='mi-query';var input=add(form,'input');input.id='mi-query';input.type='search';input.name='q';input.value=query;input.placeholder='Search insights';input.maxLength=250;input.autocomplete='off';var submit=add(form,'button','mi-search-submit','Search');submit.type='submit';
@@ -1967,7 +2086,7 @@
       try{
         for(var i=0;i<count;i++){
           var result=await api.insights(query,{sort:sort,start:nextStart,limit:12,signal:controller.signal});
-          if(dead||controller.signal.aborted)return;
+          if(dead||controller.signal.aborted){settleReady('cancelled');return;}
           var ids=new Set(rows.map(function(p){return p.id;})),incoming=result.results.filter(function(p){if(ids.has(p.id))return false;ids.add(p.id);return true;});
           if(result.hasMore&&(!incoming.length||result.nextStart<=nextStart))throw Error('The insight list changed while loading. Reload this page to continue.');
           rows=rows.concat(incoming);hasMore=result.hasMore;nextStart=hasMore?result.nextStart:nextStart+result.results.length;loadedPages++;completed++;render();
@@ -1977,18 +2096,22 @@
               if(dead||busy||controller.signal.aborted)return;
               rows=[];nextStart=0;hasMore=false;loadedPages=0;render();load(restore);
             });
-            status.textContent=rows.length?rows.length+' insights shown from an incomplete collection.':'';break;
+            status.textContent=rows.length?rows.length+' insights shown from an incomplete collection.':'';settleReady('error');break;
           }
+          // A saved route may restore fifty pages. The first useful page is
+          // sufficient for startup; subsequent restoration keeps its local busy state.
+          if(rows.length)settleReady('ready');
           if(!hasMore)break;
         }
         if(!partial&&!rows.length){message.hidden=false;message.setAttribute('role','status');message.replaceChildren();add(message,'h2','',query?'No matching insights':'More perspectives are on the way');add(message,'p','',query?'Try another search phrase.':'Published pages will appear here as the team adds them.');}
         else if(!partial&&loadedPages>=maxPages&&hasMore){message.hidden=false;message.setAttribute('role','status');message.replaceChildren();add(message,'p','','To see more insights, narrow your search.');}
         rememberPages();
-      }catch(e){if(!dead&&!controller.signal.aborted){error(message,e,function(){load(Math.max(1,count-completed));});status.textContent=rows.length?rows.length+' insights loaded.':'';}}
+        settleReady('ready');
+      }catch(e){if(!dead&&!controller.signal.aborted){error(message,e,function(){load(Math.max(1,count-completed));});status.textContent=rows.length?rows.length+' insights loaded.':'';settleReady('error');}else settleReady('cancelled');}
       finally{busy=false;if(!dead){grid.removeAttribute('aria-busy');more.disabled=loadedPages>=maxPages;more.hidden=!hasMore||loadedPages>=maxPages;}}
     }
     more.addEventListener('click',function(){load(1);});load(restore);
-    return {destroy:function(){dead=true;abort();mediaHandles.splice(0).forEach(function(handle){handle.destroy();});menus.forEach(function(menu){menu.destroy();});if(options.signal)options.signal.removeEventListener('abort',abort);root.remove();}};
+    return {ready:ready,destroy:function(){dead=true;abort();mediaHandles.splice(0).forEach(function(handle){handle.destroy();});menus.forEach(function(menu){menu.destroy();});if(options.signal)options.signal.removeEventListener('abort',abort);root.remove();}};
   }w.MosaicInsights={mount:mount};
 })(window,document);
 
@@ -1996,7 +2119,7 @@
 /* Mosaic Home / About / Resources. Native Confluence remains the content store. */
 (function(w,d){'use strict';
   if(w.MosaicSite)return;
-  var cfg,api,root,role,controller,editor,cleanup=[],generation=0,lastHash='',mounted=false;
+  var cfg,api,root,role,controller,editor,cleanup=[],generation=0,lastHash='',mounted=false,pageReady;
   var arrow='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 12h15m-6-6 6 6-6 6"/></svg>';
   var glass='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.7"/><path d="m16 16 4.5 4.5"/></svg>';
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
@@ -2027,7 +2150,7 @@
     ['about','About us','Our purpose, the problems we are solving and how Mosaic fits together.','Discover Mosaic','mosaic-about'],
     ['resources','Resources','Find documentation, practical guides and links to the tools you need.','Explore resources','mosaic-resources'],
     ['team','Meet the team','Find the people and teams behind the programme.','Meet the team','mosaic-team']
-  ].map(function(a){return '<a class="mo-card" href="'+href(a[0])+'"><div class="mo-card-media" data-mosaic-media-frame><img data-mosaic-media class="mo-card-image" src="'+img(a[4])+'" width="1200" height="667" loading="eager" decoding="async" alt=""></div><div class="mo-card-body"><h3>'+a[1]+'</h3><p>'+a[2]+'</p><span class="mo-link">'+a[3]+arrow+'</span></div></a>';}).join('')+'</div></section><section class="mo-section mo-feature"><div class="mo-feature-title"><p class="mo-eyebrow">Built to work together</p><h2>Modular by design.<br>Connected by data.</h2><p>Explore the foundations of a more consistent, scalable custody platform.</p>'+link('about','Our approach')+'</div><div class="mo-feature-image" data-mosaic-media-frame tabindex="0" aria-label="Explore Mosaic’s approach"><img data-mosaic-media src="'+img('mosaic-foundations')+'" width="1200" height="667" loading="lazy" alt=""><button class="mo-feature-hint" aria-label="Show Mosaic approach">'+arrow+'</button><div class="mo-feature-panel"><h3>One connected picture</h3><p>Shared utilities, a standard data model and coordinated workflows across the custody lifecycle.</p>'+link('about','Explore Mosaic','mo-button')+'</div></div></section><section class="mo-section"><div class="mo-section-top"><h2>From Mosaic</h2>'+link('insights','View all insights')+'</div><div id="mo-latest"><div class="mo-grid" aria-hidden="true"><div class="mo-skeleton"></div><div class="mo-skeleton"></div><div class="mo-skeleton"></div></div></div></section>';bindSearch();var feature=root.querySelector('.mo-feature-image');feature.querySelector('button').addEventListener('click',function(){feature.removeAttribute('data-dismissed');feature.setAttribute('data-open','');});feature.addEventListener('pointerenter',function(){feature.removeAttribute('data-dismissed');});feature.addEventListener('focusin',function(){feature.removeAttribute('data-dismissed');});feature.addEventListener('keydown',function(e){if(e.key==='Escape'){feature.removeAttribute('data-open');root.querySelector('.mo-feature-title a').focus({preventScroll:true});feature.setAttribute('data-dismissed','');}});latest(root.querySelector('#mo-latest'),token);}
+  ].map(function(a){return '<a class="mo-card" href="'+href(a[0])+'"><div class="mo-card-media" data-mosaic-media-frame><img data-mosaic-media class="mo-card-image" src="'+img(a[4])+'" width="1200" height="667" loading="eager" decoding="async" alt=""></div><div class="mo-card-body"><h3>'+a[1]+'</h3><p>'+a[2]+'</p><span class="mo-link">'+a[3]+arrow+'</span></div></a>';}).join('')+'</div></section><section class="mo-section mo-feature"><div class="mo-feature-title"><p class="mo-eyebrow">Built to work together</p><h2>Modular by design.<br>Connected by data.</h2><p>Explore the foundations of a more consistent, scalable custody platform.</p>'+link('about','Our approach')+'</div><div class="mo-feature-image" data-mosaic-media-frame tabindex="0" aria-label="Explore Mosaic’s approach"><img data-mosaic-media src="'+img('mosaic-foundations')+'" width="1200" height="667" loading="lazy" alt=""><button class="mo-feature-hint" aria-label="Show Mosaic approach">'+arrow+'</button><div class="mo-feature-panel"><h3>One connected picture</h3><p>Shared utilities, a standard data model and coordinated workflows across the custody lifecycle.</p>'+link('about','Explore Mosaic','mo-button')+'</div></div></section><section class="mo-section"><div class="mo-section-top"><h2>From Mosaic</h2>'+link('insights','View all insights')+'</div><div id="mo-latest"><div class="mo-grid" aria-hidden="true"><div class="mo-skeleton"></div><div class="mo-skeleton"></div><div class="mo-skeleton"></div></div></div></section>';bindSearch();var feature=root.querySelector('.mo-feature-image');feature.querySelector('button').addEventListener('click',function(){feature.removeAttribute('data-dismissed');feature.setAttribute('data-open','');});feature.addEventListener('pointerenter',function(){feature.removeAttribute('data-dismissed');});feature.addEventListener('focusin',function(){feature.removeAttribute('data-dismissed');});feature.addEventListener('keydown',function(e){if(e.key==='Escape'){feature.removeAttribute('data-open');root.querySelector('.mo-feature-title a').focus({preventScroll:true});feature.setAttribute('data-dismissed','');}});return latest(root.querySelector('#mo-latest'),token);}
   function about(){
     var acronym=[['M','Modular',''],['O','Orchestration','of'],['S','Settlements,',''],['A','Accounts','and'],['I','Integrated data','for'],['C','Custody','']];
     var capabilities=[
@@ -2048,17 +2171,26 @@
       ['Technology efficiency','Build scalable, reusable utilities to improve reliability and make technology change easier to deliver.'],
       ['Operational efficiency','Improve transparency, reduce duplicate handling and create more opportunities for automation across custody operations.']
     ];
-    function pillars(items){return items.map(function(x){return '<article class="mo-card mo-pillar"><span class="mo-number">'+x[0]+'</span><h3>'+x[1]+'</h3><p>'+x[2]+'</p></article>';}).join('');}
-    root.innerHTML='<div class="mo-about-page"><h1 class="mo-sr">About Mosaic</h1>'+
+    var steps=[
+      ['Modular utilities','Decompose monolithic applications into scalable services, each supporting a core function.'],
+      ['A shared data model','Place data where it belongs and connect platforms through a standard canonical model and event-driven integration.'],
+      ['Coordinated workflows','Process once across custody layers, with greater automation and a clearer view of operations.']
+    ];
+    var useCases=[
+      ['Digital asset custody','Develop custody capabilities for digital assets, with the Custody Securities Ledger as a foundation for the custody lifecycle.','mosaic-cover-01.webp'],
+      ['Global custody','Connect global custody with Direct Custody branches, third-party sub-custodians and token-capable services.','mosaic-cover-47.webp']
+    ];
+    function heading(id,title,lead,eyebrow){return '<header class="mo-about-heading">'+(eyebrow?'<p class="mo-eyebrow">'+esc(eyebrow)+'</p>':'')+'<h2 id="'+id+'">'+esc(title)+'</h2>'+(lead?'<p class="mo-lead">'+esc(lead)+'</p>':'')+'</header>';}
+    root.innerHTML='<div class="mo-about-page">'+
       '<section class="mo-cube" aria-label="The meaning of Mosaic"><video autoplay muted loop playsinline preload="auto" aria-hidden="true" tabindex="-1"'+(cfg.mode==='preview'&&cfg.previewPoster?' poster="'+esc(cfg.previewPoster)+'"':'')+'><source src="'+esc(cfg.videoUrl||cfg.contextPath+'/download/attachments/'+cfg.attachmentPageId+'/hero-cube.webm?api=v2')+'"></video>'+
       '<div class="mo-cube-copy"><p class="mo-eyebrow">The foundations of our future</p><dl class="mo-acronym">'+acronym.map(function(row){return '<div><dt>'+row[0]+'</dt><dd>'+row[1]+(row[2]?' <small>'+row[2]+'</small>':'')+'</dd></div>';}).join('')+'</dl></div><button type="button" class="mo-video-toggle" aria-label="Pause animation" hidden><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 5v14M16 5v14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button><span class="mo-video-note" role="status"></span></section>'+
-      '<div class="mo-about-body"><section class="mo-section mo-intro-split"><div><p class="mo-eyebrow">About us</p><h2>Powering the future<br>of custody.</h2></div><div><p>MOSAIC brings together modular technology and data-driven innovation to transform the custody lifecycle.</p><p>Our aim is a connected platform: reusable utilities, consistent data and coordinated workflows that help teams respond to change.</p></div></section>'+
-      '<section class="mo-section"><div class="mo-section-top"><h2>Why Mosaic matters</h2></div><div class="mo-grid">'+pillars(challenges)+'</div></section>'+
-      '<section class="mo-section mo-approach"><div><p class="mo-eyebrow">Our approach</p><h2>Build the foundations.<br>Connect the possibilities.</h2></div><ol class="mo-steps"><li><h3>Modular utilities</h3><p>Decompose monolithic applications into scalable services, each supporting a core function.</p></li><li><h3>A shared data model</h3><p>Place data where it belongs and connect platforms through a standard canonical model and event-driven integration.</p></li><li><h3>Coordinated workflows</h3><p>Process once across custody layers, with greater automation and a clearer view of operations.</p></li></ol></section>'+
-      '<section class="mo-section"><div class="mo-section-top"><h2>What this enables</h2></div><p class="mo-lead">The programme aims to improve the experience for clients and the teams delivering custody services.</p><div class="mo-grid">'+benefits.map(function(x){return '<article class="mo-card mo-pillar"><h3>'+x[0]+'</h3><p>'+x[1]+'</p></article>';}).join('')+'</div></section>'+
-      '<section class="mo-section"><div class="mo-section-top"><h2>Custody for what comes next</h2></div><div class="mo-use-cases"><article class="mo-card mo-pillar"><p class="mo-eyebrow">Use case 01</p><h3>Digital asset custody</h3><p>Develop custody capabilities for digital assets, with the Custody Securities Ledger as a foundation for the custody lifecycle.</p></article><article class="mo-card mo-pillar"><p class="mo-eyebrow">Use case 02</p><h3>Global custody</h3><p>Connect global custody with Direct Custody branches, third-party sub-custodians and token-capable services.</p></article></div></section>'+
-      '<section class="mo-section mo-capabilities" aria-labelledby="mo-capabilities-title"><h2 id="mo-capabilities-title">Connected capabilities</h2><p class="mo-lead">The programme’s building blocks span the custody lifecycle.</p><ul class="mo-components">'+capabilities.map(function(item){return '<li><button type="button" class="mo-capability" data-capability="'+item.id+'" aria-pressed="false" aria-controls="mo-capability-panel" aria-describedby="mo-capability-hint">'+esc(item.name)+arrow+'</button></li>';}).join('')+'</ul><p id="mo-capability-hint" class="mo-capability-hint">Select a capability to keep its details open. Select it again to clear.</p><div id="mo-capability-panel" class="mo-capability-panel" role="region" aria-labelledby="mo-capability-title"><div class="mo-capability-copy" aria-live="polite" aria-atomic="true"><p class="mo-eyebrow" data-capability-state>Explore the building blocks</p><h3 id="mo-capability-title">How Mosaic connects</h3><p data-capability-description>Hover, focus or select a capability to learn more and find related resources.</p></div><a class="mo-link mo-capability-search" hidden>Search resources '+arrow+'</a></div></section>'+
-      '<section class="mo-section mo-programme" id="mosaic-programme" aria-labelledby="mo-programme-title"><p class="mo-eyebrow">From strategy to delivery</p><h2 id="mo-programme-title">The programme in view.</h2><p class="mo-lead">Explore the approved rollout and the capabilities connecting Mosaic.</p><div data-mosaic-diagrams><p role="status">Loading programme diagrams…</p></div></section></div></div>';
+      '<div class="mo-about-body"><header class="mo-about-intro"><p class="mo-eyebrow">Powering the future of custody</p><h1>About Mosaic</h1><p class="mo-lead">MOSAIC brings together modular technology and data-driven innovation to transform the custody lifecycle.</p><p>Our aim is a connected platform: reusable utilities, consistent data and coordinated workflows that help teams respond to change.</p></header>'+
+      '<section class="mo-section" aria-labelledby="mo-purpose-title">'+heading('mo-purpose-title','Why Mosaic matters')+'<div class="mo-about-pillars">'+challenges.map(function(x){return '<article class="mo-about-pillar"><span class="mo-about-index" aria-hidden="true">'+x[0]+'</span><h3>'+x[1]+'</h3><p>'+x[2]+'</p></article>';}).join('')+'</div></section>'+
+      '<section class="mo-section mo-about-process" aria-labelledby="mo-approach-title">'+heading('mo-approach-title','Build the foundations. Connect the possibilities.','','Our approach')+'<ol class="mo-about-steps" role="list">'+steps.map(function(x,index){return '<li><span class="mo-about-step-number" aria-hidden="true">0'+(index+1)+'</span><h3>'+x[0]+'</h3><p>'+x[1]+'</p></li>';}).join('')+'</ol></section>'+
+      '<section class="mo-section" aria-labelledby="mo-benefits-title">'+heading('mo-benefits-title','What this enables','The programme aims to improve the experience for clients and the teams delivering custody services.')+'<ol class="mo-about-benefits" role="list">'+benefits.map(function(x,index){return '<li><span class="mo-about-index" aria-hidden="true">0'+(index+1)+'</span><h3>'+x[0]+'</h3><p>'+x[1]+'</p></li>';}).join('')+'</ol></section>'+
+      '<section class="mo-section" aria-labelledby="mo-use-cases-title">'+heading('mo-use-cases-title','Custody for what comes next')+'<div class="mo-about-use-cases">'+useCases.map(function(x,index){return '<article class="mo-about-use-case"><div class="mo-about-use-media" data-mosaic-media-frame><img data-mosaic-media src="'+esc(asset(x[2]))+'" width="800" height="500" loading="lazy" decoding="async" alt=""></div><div class="mo-about-use-copy"><p class="mo-eyebrow">Use case 0'+(index+1)+'</p><h3>'+x[0]+'</h3><p>'+x[1]+'</p></div></article>';}).join('')+'</div></section>'+
+      '<section class="mo-section mo-capabilities" aria-labelledby="mo-capabilities-title">'+heading('mo-capabilities-title','Connected capabilities','The programme’s building blocks span the custody lifecycle.')+'<ul class="mo-components">'+capabilities.map(function(item){return '<li><button type="button" class="mo-capability" data-capability="'+item.id+'" aria-pressed="false" aria-controls="mo-capability-panel" aria-describedby="mo-capability-hint">'+esc(item.name)+arrow+'</button></li>';}).join('')+'</ul><p id="mo-capability-hint" class="mo-capability-hint">Select a capability to keep its details open. Select it again to clear.</p><div id="mo-capability-panel" class="mo-capability-panel" role="region" aria-labelledby="mo-capability-title"><div class="mo-capability-copy" aria-live="polite" aria-atomic="true"><p class="mo-eyebrow" data-capability-state>Explore the building blocks</p><h3 id="mo-capability-title">How Mosaic connects</h3><p data-capability-description>Hover, focus or select a capability to learn more and find related resources.</p></div><a class="mo-link mo-capability-search" hidden>Search resources '+arrow+'</a></div></section>'+
+      '<section class="mo-section mo-programme" id="mosaic-programme" aria-labelledby="mo-programme-title">'+heading('mo-programme-title','The programme in view.','Explore the approved rollout and the capabilities connecting Mosaic.','From strategy to delivery')+'<div data-mosaic-diagrams><p role="status">Loading programme diagrams…</p></div></section></div></div>';
     var section=root.querySelector('.mo-capabilities'),buttons=Array.from(section.querySelectorAll('[data-capability]')),
       panel=section.querySelector('.mo-capability-panel'),title=section.querySelector('#mo-capability-title'),description=section.querySelector('[data-capability-description]'),
       state=section.querySelector('[data-capability-state]'),search=section.querySelector('.mo-capability-search'),selected=null,listeners=[];
@@ -2085,7 +2217,7 @@
     listen(section,'keydown',function(event){if(event.key==='Escape'){selected=null;show(null);event.preventDefault();}});
     cleanup.push(function(){listeners.splice(0).forEach(function(remove){remove();});selected=null;});
     bindVideo();
-    if(w.MosaicDiagramLoader){var diagrams=w.MosaicDiagramLoader.mount(root.querySelector('[data-mosaic-diagrams]'),cfg);cleanup.push(function(){diagrams.destroy();});}
+    if(w.MosaicDiagramLoader){var diagrams=w.MosaicDiagramLoader.mount(root.querySelector('[data-mosaic-diagrams]'),cfg);cleanup.push(function(){diagrams.destroy();});return diagrams.ready;}
   }
   function bindVideo(){
     var v=root.querySelector('video'),b=root.querySelector('.mo-video-toggle'),note=root.querySelector('.mo-video-note'),reduced=w.matchMedia?w.matchMedia('(prefers-reduced-motion: reduce)'):{matches:false},disposed=false,failed=false,userPaused=false,suspended=false,pending=false,queued=false,blocked=false,gestureTried=false,attempts=0,wasHidden=d.hidden,readyEvents=new Set(),listeners=[];
@@ -2144,9 +2276,9 @@
     listen(d,'pointerdown',gesture,true);listen(d,'keydown',gesture,true);
     cleanup.push(function(){disposed=true;v.autoplay=false;listeners.splice(0).forEach(function(remove){remove();});pause();});sync();
   }
-  function resources(token,r){if(r.path==='/search'&&r.q){root.innerHTML=bread('Resources')+'<h1>Search resources</h1>'+searchForm(r.q,'Search resources')+'<a class="mo-link" href="#/">Back to resources</a><div id="mo-collection"></div>';bindSearch();collection(root.querySelector('#mo-collection'),token,r,cfg.pages.resources);return;}root.innerHTML='';var component=w.MosaicResources.mount(root,{config:cfg,api:api,signal:controller.signal,onSearch:function(q){navigate('/search?q='+encodeURIComponent(q));}});cleanup.push(function(){component.destroy();});}
-  function insights(){root.innerHTML='';var component=w.MosaicInsights.mount(root,{config:cfg,api:api,signal:controller.signal});cleanup.push(function(){component.destroy();});}
-  function results(token,r){root.innerHTML=bread('Search')+'<h1>Search Mosaic</h1>'+searchForm(r.q)+'<section class="mo-section"><div class="mo-results-top"><h2>Results for “'+esc(r.q)+'”</h2><a class="mo-link" href="#/">Back to home</a></div><div id="mo-collection"></div></section>';bindSearch();collection(root.querySelector('#mo-collection'),token,r);}
+  function resources(token,r){if(r.path==='/search'&&r.q){root.innerHTML=bread('Resources')+'<h1>Search resources</h1>'+searchForm(r.q,'Search resources')+'<a class="mo-link" href="#/">Back to resources</a><div id="mo-collection"></div>';bindSearch();return collection(root.querySelector('#mo-collection'),token,r,cfg.pages.resources);}root.innerHTML='';var component=w.MosaicResources.mount(root,{config:cfg,api:api,signal:controller.signal,onSearch:function(q){navigate('/search?q='+encodeURIComponent(q));}});cleanup.push(function(){component.destroy();});return component.ready;}
+  function insights(){root.innerHTML='';var component=w.MosaicInsights.mount(root,{config:cfg,api:api,signal:controller.signal});cleanup.push(function(){component.destroy();});return component.ready;}
+  function results(token,r){root.innerHTML=bread('Search')+'<h1>Search Mosaic</h1>'+searchForm(r.q)+'<section class="mo-section"><div class="mo-results-top"><h2>Results for “'+esc(r.q)+'”</h2><a class="mo-link" href="#/">Back to home</a></div><div id="mo-collection"></div></section>';bindSearch();return collection(root.querySelector('#mo-collection'),token,r);}
   async function collection(target,token,r,parent){target.setAttribute('aria-busy','true');target.innerHTML='<p class="mo-status" role="status">'+(r.q?'Searching…':'Loading pages…')+'</p>';try{var list=r.q?await api.search(r.q,{start:r.start,limit:12,signal:controller.signal,parentId:parent}):await api.children(parent,{start:r.start,limit:12,signal:controller.signal});if(token!==generation)return;target.innerHTML=list.results.length?list.results.map(function(p){return '<article class="mo-result"><div class="mo-meta">'+esc(date(p.updated)||'Mosaic page')+'</div><h3><a href="'+esc(p.url)+'">'+esc(p.title)+'</a></h3><p>'+esc(p.excerpt||'Open this page to learn more.')+'</p></article>';}).join(''):statusBox(r.q?'No matching pages. Try a shorter phrase or a different keyword.':'No resources have been published here yet.');if(list.results.length||r.start||list.hasMore){target.insertAdjacentHTML('beforeend','<nav class="mo-pagination" aria-label="Results pages"><span>'+(r.start?'':'')+'</span><span class="mo-meta">'+(list.results.length?'Showing '+(r.start+1)+'–'+(r.start+list.results.length):'No pages on this page')+'</span><span></span></nav>');var pager=target.querySelector('.mo-pagination');function page(start,label,slot){var a=d.createElement('a');a.className='mo-button mo-button-secondary';a.textContent=label;a.href=(r.q?'#/search?q='+encodeURIComponent(r.q)+'&':'#/?')+'start='+start;pager.children[slot].append(a);}if(r.start)page(Math.max(0,r.start-12),'Previous',0);if(list.hasMore)page(list.nextStart,'Next',2);}target.insertAdjacentHTML('afterbegin','<p class="mo-sr" role="status">'+list.results.length+' results loaded.</p>');}catch(e){if(token===generation)errors(target,e,function(){collection(target,token,r,parent);});}finally{if(token===generation)target.removeAttribute('aria-busy');}}
   async function writing(token,r){
     root.innerHTML='<p class="mo-status" role="status">Opening the editor…</p>';
@@ -2172,18 +2304,63 @@
       editor=instance;
     }catch(e){if(token===generation)errors(root,e,function(){writing(token,r);});}
   }
-  function team(){root.innerHTML='<div data-mosaic-team></div>';var component=w.MosaicTeamLoader.mount(root.querySelector('[data-mosaic-team]'),cfg);cleanup.push(function(){component.destroy();});}
-  function render(event){var restoreSearchFocus=!!d.activeElement?.matches('form.mosaic-search input[type="search"]');var r=route();if(editor&&editor.isPublishing&&editor.isPublishing()){w.history.replaceState(null,'',lastHash||'#/');return;}if(editor&&editor.hasUnsavedChanges()&&!w.confirm('Leave this article and discard your unsaved changes?')){w.history.replaceState(null,'',lastHash||'#/');return;}lastHash=w.location.hash;w.MosaicHost.boot(cfg);generation++;var token=generation;controller?.abort();controller=new AbortController();editor?.destroy();editor=null;cleanup.splice(0).forEach(function(fn){fn();});if(['home','resources','insights'].includes(role)&&(/^\/new$/.test(r.path)||/^\/edit\/[1-9]\d*$/.test(r.path))){w.MosaicHost.ready();writing(token,r);}else if(role==='about')about();else if(role==='resources')resources(token,r);else if(role==='team')team();else if(role==='insights')insights();else if(r.path==='/search'&&r.q.trim())results(token,r);else {home(token);}enhanceMedia(root);var searchControl=w.MosaicSearch?.enhance(root);if(searchControl)cleanup.push(function(){searchControl.destroy();});w.MosaicHost.ready();var heading=root.querySelector('h1');heading?.setAttribute('tabindex','-1');if(event&&event.type==='hashchange'){var focusTarget=restoreSearchFocus?root.querySelector('form.mosaic-search input[type=search]'):heading;(focusTarget||heading)?.focus({preventScroll:true});if(root.scrollIntoView)root.scrollIntoView({block:'start',behavior:'auto'});}}
-  async function boot(){if(mounted)return;root=d.querySelector('[data-mosaic-root]');if(!root)return;cfg=w.MosaicConfig.resolve(w.MOSAIC_CONFIG);role=root.getAttribute('data-mosaic-role');if(!['home','about','resources','team','insights'].includes(role))return;var nativeId=(d.querySelector('meta[name="ajs-page-id"]')||{}).content;var nativeSpace=(d.querySelector('meta[name="ajs-space-key"]')||{}).content;try{nativeId=nativeId||(w.AJS&&w.AJS.Meta.get('page-id'));nativeSpace=nativeSpace||(w.AJS&&w.AJS.Meta.get('space-key'));}catch(_){}var nativeURL=new URL(w.location.href),overview=nativeURL.pathname===cfg.contextPath+'/spaces/'+cfg.spaceKey+'/overview'||nativeURL.pathname===cfg.contextPath+'/spaces/'+cfg.spaceKey+'/overview/';nativeId=nativeId||nativeURL.searchParams.get('pageId');if(overview&&(!nativeSpace||nativeSpace===cfg.spaceKey)){nativeId=nativeId||cfg.pages.home;if(String(nativeId)===String(cfg.pages.home))nativeSpace=nativeSpace||cfg.spaceKey;}if(forbidden())return;if(String(nativeId||'')!==String(cfg.pages[role])||nativeSpace!==cfg.spaceKey){root.innerHTML='<p>This Mosaic layout is only available on its configured page.</p>';return;}mounted=true;w.MosaicLibraries.configure(cfg);api=w.MosaicAPI.create(cfg);w.MosaicHost.boot(cfg);w.addEventListener('hashchange',render);root.addEventListener('click',rememberReturn);render();}
+  function team(){root.innerHTML='<div data-mosaic-team></div>';var component=w.MosaicTeamLoader.mount(root.querySelector('[data-mosaic-team]'),cfg);cleanup.push(function(){component.destroy();});return component.ready;}
+  function render(event){
+    var restoreSearchFocus=!!d.activeElement?.matches('form.mosaic-search input[type="search"]'),r=route();
+    if(editor&&editor.isPublishing&&editor.isPublishing()){w.history.replaceState(null,'',lastHash||'#/');return pageReady;}
+    if(editor&&editor.hasUnsavedChanges()&&!w.confirm('Leave this article and discard your unsaved changes?')){w.history.replaceState(null,'',lastHash||'#/');return pageReady;}
+    lastHash=w.location.hash;var host=w.MosaicHost.boot(cfg);
+    generation++;var token=generation;controller?.abort();controller=new AbortController();
+    editor?.destroy();editor=null;cleanup.splice(0).forEach(function(fn){fn();});
+    var initial;
+    if(['home','resources','insights'].includes(role)&&(/^\/new$/.test(r.path)||/^\/edit\/[1-9]\d*$/.test(r.path)))initial=writing(token,r);
+    else if(role==='about')initial=about();
+    else if(role==='resources')initial=resources(token,r);
+    else if(role==='team')initial=team();
+    else if(role==='insights')initial=insights();
+    else if(r.path==='/search'&&r.q.trim())initial=results(token,r);
+    else initial=home(token);
+    enhanceMedia(root);var searchControl=w.MosaicSearch?.enhance(root);
+    if(searchControl)cleanup.push(function(){searchControl.destroy();});
+    pageReady=w.MosaicPageReady?w.MosaicPageReady.run({target:root,initial:initial,host:host,signal:controller.signal}):Promise.resolve(initial).then(function(){if(token===generation)w.MosaicHost.ready();});
+    var heading=root.querySelector('h1');heading?.setAttribute('tabindex','-1');
+    if(event&&event.type==='hashchange'){
+      var focusTarget=restoreSearchFocus?root.querySelector('form.mosaic-search input[type=search]'):heading;
+      (focusTarget||heading)?.focus({preventScroll:true});
+      if(root.scrollIntoView)root.scrollIntoView({block:'start',behavior:'auto'});
+    }
+    return pageReady;
+  }
+  async function boot(){if(mounted)return pageReady;root=d.querySelector('[data-mosaic-root]');if(!root)return;cfg=w.MosaicConfig.resolve(w.MOSAIC_CONFIG);role=root.getAttribute('data-mosaic-role');if(!['home','about','resources','team','insights'].includes(role))return;var nativeId=(d.querySelector('meta[name="ajs-page-id"]')||{}).content;var nativeSpace=(d.querySelector('meta[name="ajs-space-key"]')||{}).content;try{nativeId=nativeId||(w.AJS&&w.AJS.Meta.get('page-id'));nativeSpace=nativeSpace||(w.AJS&&w.AJS.Meta.get('space-key'));}catch(_){}var nativeURL=new URL(w.location.href),overview=nativeURL.pathname===cfg.contextPath+'/spaces/'+cfg.spaceKey+'/overview'||nativeURL.pathname===cfg.contextPath+'/spaces/'+cfg.spaceKey+'/overview/';nativeId=nativeId||nativeURL.searchParams.get('pageId');if(overview&&(!nativeSpace||nativeSpace===cfg.spaceKey)){nativeId=nativeId||cfg.pages.home;if(String(nativeId)===String(cfg.pages.home))nativeSpace=nativeSpace||cfg.spaceKey;}if(forbidden())return;if(String(nativeId||'')!==String(cfg.pages[role])||nativeSpace!==cfg.spaceKey){root.innerHTML='<p>This Mosaic layout is only available on its configured page.</p>';w.MosaicStartup?.cancel();return;}mounted=true;w.MosaicLibraries.configure(cfg);api=w.MosaicAPI.create(cfg);w.MosaicHost.boot(cfg);w.addEventListener('hashchange',render);root.addEventListener('click',rememberReturn);return render();}
   function rememberReturn(e){var a=e.target.closest('.mo-result a,[data-mosaic-result],.mrs-card,.mo-card');if(!a)return;var r=route();try{var u=new URL(a.href,w.location.href),id=u.searchParams.get('pageId');if(id)w.sessionStorage.setItem('mosaic.return-results',JSON.stringify({url:w.location.href,pageId:id,savedAt:Date.now()}));}catch(_){}}
   function destroy(){root?.removeEventListener('click',rememberReturn);generation++;controller?.abort();editor?.destroy();cleanup.splice(0).forEach(function(fn){fn();});w.removeEventListener('hashchange',render);mounted=false;}
   w.MosaicSite={boot:boot,destroy:destroy,_test:{escape:esc,route:route,safeLink:nativeLink}};
-  if(d.readyState==='loading')d.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
+  // The shared navbar bootstrap owns DOM readiness and initial activation.
 })(window,document);
 
 ;
-/* Also runs from the existing navBar include on ordinary native article pages. */
-(function(w,d){'use strict';
-  function start(){var c=w.MOSAIC_CONFIG;w.MosaicLibraries.configure(c);w.MosaicNavbar.boot(c);if(d.querySelector('[data-mosaic-root]'))w.MosaicSite.boot();else{var s=w.MosaicHost.boot(c);if(!s.isHome)w.MosaicHost.ready();}}
-  if(d.readyState==='loading')d.addEventListener('DOMContentLoaded',start,{once:true});else start();
+/* The shared navbar boots both page macros and native published articles. */
+(function(w,d){
+  'use strict';
+  if(w.MosaicBootstrap)return;
+  var ready;
+  function start(){
+    var config=w.MOSAIC_CONFIG;
+    w.MosaicLibraries.configure(config);w.MosaicNavbar.boot(config);
+    if(d.querySelector('[data-mosaic-root]'))return w.MosaicSite.boot();
+    var host=w.MosaicHost.boot(config);
+    return w.MosaicPageReady.run({host:host,native:true});
+  }
+  function boot(){
+    if(!ready)ready=d.readyState==='loading'?new Promise(function(resolve,reject){
+      d.addEventListener('DOMContentLoaded',function(){try{resolve(start());}catch(error){reject(error);}},{once:true});
+    }):Promise.resolve().then(start);
+    // A navbar injected after a page macro adopts the existing readiness result.
+    return ready.then(function(result){
+      if(result?.status==='ready')w.MosaicStartup?.finish();else w.MosaicStartup?.cancel();
+      return result;
+    },function(error){w.MosaicStartup?.cancel();throw error;});
+  }
+  w.MosaicBootstrap=Object.freeze({boot:boot});
+  boot().catch(function(error){w.MosaicHost?.error(error.message);});
 })(window,document);

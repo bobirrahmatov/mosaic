@@ -248,6 +248,8 @@
     var preview = config.mode === 'preview' || peopleConfig.preview === true || config.preview === true;
     var d = target.ownerDocument, listeners = [], destroyed = false, controller = null, request = 0, loading = false;
     var state = null, nodes = [], nodeById = new Map(), frame = null, resizeObserver = null, centerOnLayout = false, observedWidth = null, heroMedia = null;
+    var resolveReady, ready = new Promise(function (resolve) { resolveReady = resolve; });
+    function settleReady(status) { if (resolveReady) { resolveReady({status:status}); resolveReady = null; } }
     function el(tag, cls, value) { var n = d.createElement(tag); if (cls) n.className = cls; if (value !== undefined) n.textContent = value; return n; }
     function add(parent, tag, cls, value) { var n = el(tag, cls, value); parent.appendChild(n); return n; }
     function contactIcon(label) {
@@ -331,14 +333,15 @@
         if (!w.MosaicPeopleAPI || typeof w.MosaicPeopleAPI.create !== 'function') throw new Error('The people directory is unavailable. Try again after the page has finished loading.');
         var api = w.MosaicPeopleAPI.create(config);
         var result = await api.loadOrganization(rootId, {signal:controller.signal,onProgress:function () { if (!destroyed && serial === request && loading) renderStatus('loading', 'Loading people and reporting lines…'); }});
-        if (destroyed || serial !== request) return;
+        if (destroyed || serial !== request) { settleReady('cancelled'); return; }
         state = normalize(result); renderWarnings(); body.hidden = false; renderStatus('', ''); renderTree();
         announcement.textContent = state.complete ? 'Team hierarchy loaded.' : 'Team hierarchy loaded with some reporting lines incomplete.';
       } catch (error) {
-        if (destroyed || serial !== request || (error && error.name === 'AbortError')) return;
+        if (destroyed || serial !== request || (error && error.name === 'AbortError')) { settleReady('cancelled'); return; }
         var message = error && error.message ? String(error.message) : 'The people directory could not be loaded.';
         renderStatus('error', (state ? 'Could not reload the team. Showing the previously loaded people. ' : '') + message, true);
         if (!state) body.hidden = true;
+        settleReady('error');
       } finally { if (!destroyed && serial === request) setLoading(false); }
     }
 
@@ -402,6 +405,8 @@
         var path = d.createElementNS('http://www.w3.org/2000/svg', 'path'); path.dataset.from = managerId; path.dataset.to = personId; path.setAttribute('d', 'M ' + startX + ' ' + startY + ' V ' + midY + ' H ' + endX + ' V ' + to.y); paths.appendChild(path);
       }); svg.appendChild(paths);
       if (centerOnLayout) { var lead = nodeById.get(rootId), width = viewport.clientWidth || 700; viewport.scrollLeft = Math.max(0, lead.x + lead.width / 2 - width / 2); viewport.scrollTop = 0; centerOnLayout = false; }
+      // Card geometry and connectors must exist before startup reveals the chart.
+      settleReady('ready');
     }
     function scheduleLayout(center) { centerOnLayout = centerOnLayout || !!center; if (frame !== null) return; frame = w.setTimeout(function () { frame = null; layout(); }, 0); }
     function focusNode(node) {
@@ -441,8 +446,10 @@
       resizeObserver.observe(viewport);
     } else on(w, 'resize', function () { scheduleLayout(false); });
     if (d.fonts && d.fonts.ready) d.fonts.ready.then(function () { if (!destroyed) scheduleLayout(false); });
-    var handle = Object.freeze({destroy:function () { if (destroyed) return; destroyed = true; request++; if (controller) controller.abort(); if (frame !== null) w.clearTimeout(frame); if (resizeObserver) resizeObserver.disconnect(); if (heroMedia && typeof heroMedia.destroy === 'function') heroMedia.destroy(); listeners.splice(0).forEach(function (remove) { remove(); }); root.remove(); if (mounted.get(target) === handle) mounted.delete(target); }});
-    mounted.set(target, handle); load(); return handle;
+    var handle = Object.freeze({ready:ready,destroy:function () { if (destroyed) return; destroyed = true; settleReady('cancelled'); request++; if (controller) controller.abort(); if (frame !== null) w.clearTimeout(frame); if (resizeObserver) resizeObserver.disconnect(); if (heroMedia && typeof heroMedia.destroy === 'function') heroMedia.destroy(); listeners.splice(0).forEach(function (remove) { remove(); }); root.remove(); if (mounted.get(target) === handle) mounted.delete(target); }});
+    mounted.set(target, handle);
+    if (options && options.signal) { on(options.signal, 'abort', handle.destroy); if (options.signal.aborted) handle.destroy(); }
+    if (!destroyed) load(); return handle;
   }
   w.MosaicTeam = Object.freeze({mount:mount});
 }(window));
