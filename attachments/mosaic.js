@@ -173,11 +173,53 @@
   var MAX_FILE_BYTES = 5 * 1024 * 1024;
   var STYLE_MARKER = '<ac:structured-macro ac:name="anchor" ac:schema-version="1"><ac:parameter ac:name="">mosaic-page-style-v1</ac:parameter></ac:structured-macro>';
   var STYLE_LABELS = ['hide-actions','hide-comments','hide-footer','hide-title'];
+  var INVALID_XML = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffe\uffff\ud800-\udfff]/u;
 
   function fault(message, code, status) {
     var error = new Error(message); error.code = code || 'API_ERROR';
     if (status) error.status = status;
     return error;
+  }
+  function validationMessage(data) {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return '';
+    var candidates = [], messages = [], duplicateTitle = false;
+    function collect(value) {
+      if (typeof value === 'string') candidates.push([value]);
+      else if (value) candidates.push([value.translation,value.key].filter(function (item) { return typeof item === 'string'; }));
+    }
+    // Read only documented validation fields, never stringify the response or args.
+    [data.errors, data.data && data.data.errors].forEach(function (errors) {
+      if (Array.isArray(errors)) errors.slice(0, 5).forEach(function (error) { collect(error && error.message); });
+    });
+    collect(data.message); collect(data.data && data.data.message);
+    function readable(candidate) {
+      var text = decodeXML(candidate.slice(0, 2000)).trim();
+      // Keep a Confluence/Java exception's explanation, not its class or frames.
+      text = text.split(/\r?\n\s*(?:at\s+|Caused by:|Traceback)/)[0];
+      text = text.replace(/^(?:(?:com\.atlassian|java|javax|org\.apache)\.[\w.$]+(?:Exception|Error)):\s*/, '');
+      // HTML proxy pages, echoed payloads and stack traces are not user messages.
+      if (!text || /<[!/?a-z]|^[\[{]|\b(?:request|response)\s*(?:body|payload)\s*[:=]/i.test(text)) return;
+      if (/\b(?:[a-z_$][\w$]*\.){2,}[\w$]*(?:Exception|Error)\b|^Traceback|\b(?:stack\s*trace|stacktrace)\s*:/i.test(text)) return;
+      text = text.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
+      if (!text || /^(?:bad request|validation (?:error|failed))[.!]?$/i.test(text)) return;
+      return text;
+    }
+    candidates.slice(0, 12).forEach(function (candidate) {
+      if (duplicateTitle) return;
+      // Prefer a usable translated message; fall back to its key if omitted or unsafe.
+      var text = candidate.map(readable).find(Boolean);
+      if (!text) return;
+      var words = text.replace(/[._-]+/g, ' ');
+      if (/\b(?:duplicate|duplicated|conflicting)\s+(?:(?:page|content)\s+)?title\b|\btitle\s+(?:(?:is|must be|should be)\s+)?(?:already (?:exists?|in use|taken)|not unique|unique|duplicate|duplicated|collision|conflict)\b/i.test(words) || /\b(?:page|content) with (?:(?:this|the|that|a) )?title\b.{0,160}\balready exists?\b|\b(?:page|content) already exists? with (?:(?:this|the|that|a) )?title\b/i.test(words)) {
+        duplicateTitle = true;
+        return;
+      }
+      if (text.length > 240) text = text.slice(0, 239).trimEnd() + '…';
+      if (!messages.includes(text)) messages.push(text);
+    });
+    if (duplicateTitle) return 'A page with this title already exists in Mosaic. Choose a different title.';
+    var result = messages.slice(0, 2).join(' ');
+    return result.length > 360 ? result.slice(0, 359).trimEnd() + '…' : result;
   }
   function numeric(value, name) {
     if (!/^[1-9]\d{0,19}$/.test(String(value || ''))) throw fault('Configure a numeric ' + name + '.', 'CONFIGURATION');
@@ -308,11 +350,23 @@
       if (signal) signal.addEventListener('abort', abort, {once:true});
       var timer = setTimeout(function () { timeout = true; controller.abort(); }, options.method ? (config.writeTimeoutMs || 60000) : (config.readTimeoutMs || 15000));
       try {
-        var response = await fetcher(context + path, {method:options.method || 'GET',credentials:'same-origin',signal:controller.signal,headers:Object.assign({Accept:'application/json'}, options.form ? {'X-Atlassian-Token':'nocheck'} : options.body ? {'Content-Type':'application/json'} : {}),body:options.form || (options.body ? JSON.stringify(options.body) : undefined)});
+        var response = await fetcher(context + path, {method:options.method || 'GET',credentials:'same-origin',signal:controller.signal,headers:Object.assign({Accept:'application/json'}, options.form ? {'X-Atlassian-Token':'nocheck'} : options.body ? Object.assign({'Content-Type':'application/json'}, options.method && !/^(?:GET|HEAD)$/i.test(options.method) ? {'X-Requested-With':'XMLHttpRequest'} : {}) : {}),body:options.form || (options.body ? JSON.stringify(options.body) : undefined)});
         var raw = await response.text(), data = null;
-        try { data = raw ? JSON.parse(raw) : null; } catch (_) { /* An HTML login page is an explicit failure. */ }
+        try { data = raw ? JSON.parse(raw) : null; } catch (_) {
+          // A few Data Center validators return text/plain instead of JSON.
+          // Never treat HTML login/proxy pages or an unknown media type as details.
+          if (!response.ok && (response.status === 400 || response.status === 422) && /^text\/plain(?:\s*;|\s*$)/i.test(response.headers?.get?.('Content-Type') || '')) data = {message:raw};
+        }
         if (!response.ok) {
           var message = response.status === 401 ? 'Your Confluence session has expired. Sign in and try again.' : response.status === 403 ? 'Confluence denied this action. Your native space and page permissions apply.' : response.status === 409 ? 'This page changed, or its title is already in use. Refresh the native page before trying again.' : response.status === 413 ? 'This file exceeds the native Confluence attachment size limit.' : 'Confluence could not complete this action (HTTP ' + response.status + ').';
+          if (response.status === 400 || response.status === 422) {
+            var detail = validationMessage(data);
+            if (detail) message += ' ' + detail;
+            else {
+              message += ' Confluence did not provide a validation reason.';
+              if (options.body && options.method && !/^(?:GET|HEAD)$/i.test(options.method)) message += ' Your draft has been kept.';
+            }
+          }
           throw fault(message, response.status === 409 ? 'CONFLICT' : 'HTTP_ERROR', response.status);
         }
         if (!data || typeof data !== 'object') throw fault('Confluence returned an unexpected response. Check your session.', 'INVALID_RESPONSE');
@@ -624,9 +678,11 @@
     async function publish(input) {
       input = input || {};
       if (mutation) throw fault('A publication is already in progress.', 'BUSY');
-      var title = String(input.title || '').trim();
+      var rawTitle = String(input.title || ''), title = rawTitle.trim();
+      if (INVALID_XML.test(rawTitle)) throw fault('The title contains characters Confluence cannot store. Remove them before publishing.', 'INVALID_CONTENT');
       if (!title || title.length > 255) throw fault('Enter a title of up to 255 characters.', 'INVALID_CONTENT');
-      var summary=String(input.summary||'').trim();if(summary.length>1000||/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(summary))throw fault('Keep the summary to 1,000 characters of readable text or fewer.','INVALID_CONTENT');
+      var rawSummary=String(input.summary||''),summary=rawSummary.trim();
+      if(summary.length>1000||INVALID_XML.test(rawSummary)||/\u007f/.test(rawSummary))throw fault('Keep the summary to 1,000 characters of readable text or fewer.','INVALID_CONTENT');
       var attachmentsPending=input.attachmentsPending===true&&!input.id;
       var editorHtml=typeof input.html==='string'?input.html:'';if(editorHtml.trim())validateHTML(editorHtml);else if(!summary&&!attachmentsPending)throw fault('Write some article content or a summary before publishing.','INVALID_CONTENT');
       var parentId = numeric(input.parentId || pages.insights, 'Insights parent page ID');

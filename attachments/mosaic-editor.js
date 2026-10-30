@@ -38,6 +38,22 @@
     var context = String(config.contextPath || '/confluence').replace(/\/+$/, '');
     return page && page.id ? context + '/pages/editpage.action?pageId=' + encodeURIComponent(page.id) : context + '/pages/createpage.action?' + new URLSearchParams({spaceKey:config.spaceKey,fromPageId:parentId || config.pages.insights});
   }
+  function storageText(value, attribute) {
+    // Pasted controls and lone surrogates cannot be represented in XML 1.0.
+    // Remove those invisible characters while retaining valid Unicode, including
+    // NBSP and emoji. Attribute whitespace needs references to survive XML parsing.
+    return String(value).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\ud800-\udfff\ufffe\uffff]/gu,'').replace(attribute ? /[&<>"\t\n\r]/g : /[&<>\r]/g,function (character) {
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\t':'&#9;','\n':'&#10;','\r':'&#13;'}[character];
+    });
+  }
+  function storageChildren(node) {
+    return Array.from(node.childNodes).map(function (child) {
+      if (child.nodeType === 3) return storageText(child.nodeValue,false);
+      if (child.nodeType !== 1) return '';
+      var tag = child.localName, attributes = Array.from(child.attributes).map(function (attribute) { return ' ' + attribute.name + '="' + storageText(attribute.value,true) + '"'; }).join('');
+      return '<' + tag + attributes + (/^(?:br|hr|img)$/.test(tag) ? ' />' : '>' + storageChildren(child) + '</' + tag + '>');
+    }).join('');
+  }
   function sanitizeHTML(value, purifier, doc) {
     if (!purifier || typeof purifier.sanitize !== 'function') throw new Error('The article editor could not load its content sanitizer. Reload the page to try again.');
     var clean = purifier.sanitize(String(value || ''), {ALLOWED_TAGS:TAGS,ALLOWED_ATTR:ATTRS,ALLOW_DATA_ATTR:false,ALLOW_ARIA_ATTR:false,KEEP_CONTENT:true,FORBID_TAGS:['script','style','iframe','object','embed','svg','math']});
@@ -48,7 +64,9 @@
       ['width','height'].forEach(function (key) { if (img.hasAttribute(key) && (!/^[1-9]\d{0,3}$/.test(img.getAttribute(key)) || Number(img.getAttribute(key)) > 8192)) img.removeAttribute(key); });
     });
     box.querySelectorAll('[colspan],[rowspan]').forEach(function (cell) { ['colspan','rowspan'].forEach(function (key) { if (cell.hasAttribute(key) && !/^[1-9]\d?$/.test(cell.getAttribute(key))) cell.removeAttribute(key); }); });
-    return box.innerHTML.replace(/<(br|hr)>/g, '<$1 />').replace(/<img\b([^>]*?)(?:\s*\/)?\s*>/gi,'<img$1 />');
+    // HTML serialization emits named entities such as &nbsp; and may leave '<'
+    // inside attributes. Serialize the sanitized DOM as Confluence XHTML instead.
+    return storageChildren(box);
   }
   function mount(container, options) {
     options = options || {};
