@@ -909,6 +909,7 @@
   var floating = 'aui-dropdown-menu,.aui-dropdown2,.aui-layer,[role="menu"],[role="listbox"],[role="dialog"]';
   var cfg, state = {active:false,pending:false,pageId:'',isHome:false}, epoch=0, observer, resizeObserver, queued=false;
   var host, topSlot, topButton, toggleTarget, overlay, overlayTimer, overlayTarget, overlayAttrs, focusedBefore;
+  var overlayCycleFrame=0,overlayFrame=0,overlayCycleStarted=false,overlayCycleComplete=true,overlayReady=false,overlayMotion,overlayFill;
   var complete=false, checkController, readyBeforeBoot=false, fontMedia, readerTools, readerExport, readerBack, readerSurface, readerSurfaceMarked, readerContent, readerWidget, pageAttributes, nativePresentation;
   var marks=new Map(), links=new Map(), compactLinks=new Set(), collapsedHosts=new WeakSet();
   var fluidMedia=new Map(),fluidContainers=new Map();
@@ -1175,8 +1176,14 @@
     nativePresentation=w.MosaicNativePage?.sync({content:content,title:nativeTitle(content),hideTitle:flags.includes('hide-title'),article:Object.assign({},state.exportMetadata||{},{collection:state.collection||'',config:cfg})})||null;
   }
   function overlayKeys(event){if(overlay&&event.key==='Tab'){event.preventDefault();overlay.focus({preventScroll:true});}if(overlay&&event.key==='Escape'){complete=true;readyBeforeBoot=true;hideOverlay();}}
+  function settleOverlay(){if(!overlay||!overlayReady||!overlayCycleComplete||overlayFrame||d.hidden&&!overlayMotion?.matches)return;if(overlayMotion?.matches||!w.requestAnimationFrame)hideOverlay();else overlayFrame=w.requestAnimationFrame(function(){overlayFrame=w.requestAnimationFrame(hideOverlay);});}
+  function endOverlayCycle(){if(!overlay)return;overlayCycleComplete=true;if(overlayCycleFrame)w.cancelAnimationFrame(overlayCycleFrame);overlayCycleFrame=0;overlay.setAttribute('data-cycle-complete','');overlay.removeAttribute('data-cycle-running');settleOverlay();}
+  function startOverlayCycle(){if(!overlay||overlayCycleComplete||d.hidden||overlayCycleFrame)return;function run(){overlayCycleFrame=0;if(!overlay||overlayCycleComplete||d.hidden)return;overlayCycleStarted=true;overlay.removeAttribute('data-cycle-restart');overlay.setAttribute('data-cycle-running','');}if(w.requestAnimationFrame)overlayCycleFrame=w.requestAnimationFrame(function(){overlayCycleFrame=w.requestAnimationFrame(run);});else run();}
+  function overlayAnimationEnded(event){if(event.target!==overlayFill||event.animationName!=='mosaic-loading-fill'||!overlayCycleStarted)return;if(d.hidden){overlayCycleStarted=false;overlay.setAttribute('data-cycle-restart','');return;}endOverlayCycle();}
+  function overlayVisibilityChanged(){if(!overlay)return;if(d.hidden){overlay.removeAttribute('data-cycle-running');if(overlayCycleFrame)w.cancelAnimationFrame(overlayCycleFrame);overlayCycleFrame=0;if(overlayFrame)w.cancelAnimationFrame(overlayFrame);overlayFrame=0;}else{startOverlayCycle();settleOverlay();}}
+  function overlayMotionChanged(event){if(event.matches)endOverlayCycle();}
   function showOverlay() {
-    // The inline startup owns the whole loading lifecycle, including dismissal
+    // The shared startup owns the whole loading lifecycle, including dismissal
     // and timeout. A late host download must not open a second overlay.
     if(!state.isHome||complete||forbidden()||customEditor()||overlay||w.location.hash&&!/^#\/?(?:\?.*)?$/.test(w.location.hash)||w.MosaicStartup)return;
     overlayTarget=d.querySelector('[data-mosaic-root],#mosaic')||d.querySelector('#main-content')||d.body;
@@ -1185,10 +1192,10 @@
     var panel=d.createElement('div'),logo=d.createElement('img'),tagline=d.createElement('p'),track=d.createElement('span'),fill=d.createElement('span');
     panel.className='mosaic-loading-panel';logo.className='mosaic-loading-logo';logo.alt='Mosaic';logo.width=360;logo.height=75;logo.src=cfg.contextPath+'/download/attachments/'+(cfg.attachmentPageId||'3981001251')+'/mosaic-logo.svg';
     tagline.className='mosaic-loading-message';tagline.textContent='Connecting our capabilities.';track.className='mosaic-loading-track';track.setAttribute('aria-hidden','true');fill.className='mosaic-loading-fill';track.append(fill);panel.append(logo,tagline,track);overlay.append(panel);
-    d.body.append(overlay);overlay.focus({preventScroll:true});d.addEventListener('keydown',overlayKeys,true);overlayTimer=w.setTimeout(function(){error('Mosaic is taking longer to load. You can refresh the page to try again.');},Math.max(100,Math.min(Number(cfg.loadingTimeoutMs)||15000,60000)));
+    d.body.append(overlay);overlay.focus({preventScroll:true});d.addEventListener('keydown',overlayKeys,true);overlayFill=fill;overlayFill.addEventListener('animationend',overlayAnimationEnded);d.addEventListener('visibilitychange',overlayVisibilityChanged);overlayReady=false;overlayCycleStarted=false;overlayMotion=w.matchMedia?.('(prefers-reduced-motion: reduce)');overlayCycleComplete=!!overlayMotion?.matches;if(overlayCycleComplete)overlay.setAttribute('data-cycle-complete','');else startOverlayCycle();overlayMotion?.addEventListener?.('change',overlayMotionChanged);overlayTimer=w.setTimeout(function(){error('Mosaic is taking longer to load. You can refresh the page to try again.');},Math.max(100,Math.min(Number(cfg.loadingTimeoutMs)||15000,60000)));
   }
-  function hideOverlay(){w.clearTimeout(overlayTimer);overlayTimer=null;var restoreFocus=overlay&&d.activeElement===overlay;overlay?.remove();overlay=null;d.removeEventListener('keydown',overlayKeys,true);if(overlayTarget&&overlayAttrs){restore(overlayTarget,'aria-busy',overlayAttrs.busy);if(overlayTarget!==d.body)restore(overlayTarget,'inert',overlayAttrs.inert);}if(restoreFocus&&focusedBefore?.isConnected)focusedBefore.focus({preventScroll:true});overlayTarget=null;overlayAttrs=null;focusedBefore=null;}
-  function ready(){complete=true;readyBeforeBoot=true;if(state.active)refresh();hideOverlay();w.MosaicStartup?.finish();schedule();}
+  function hideOverlay(){w.clearTimeout(overlayTimer);if(overlayCycleFrame)w.cancelAnimationFrame(overlayCycleFrame);if(overlayFrame)w.cancelAnimationFrame(overlayFrame);overlayMotion?.removeEventListener?.('change',overlayMotionChanged);overlayFill?.removeEventListener('animationend',overlayAnimationEnded);d.removeEventListener('visibilitychange',overlayVisibilityChanged);overlayTimer=null;overlayCycleFrame=0;overlayFrame=0;overlayMotion=null;overlayFill=null;overlayReady=false;var restoreFocus=overlay&&d.activeElement===overlay;overlay?.remove();overlay=null;d.removeEventListener('keydown',overlayKeys,true);if(overlayTarget&&overlayAttrs){restore(overlayTarget,'aria-busy',overlayAttrs.busy);if(overlayTarget!==d.body)restore(overlayTarget,'inert',overlayAttrs.inert);}if(restoreFocus&&focusedBefore?.isConnected)focusedBefore.focus({preventScroll:true});overlayTarget=null;overlayAttrs=null;focusedBefore=null;}
+  function ready(){complete=true;readyBeforeBoot=true;if(state.active)refresh();if(forbidden()||customEditor()||w.location.hash&&!/^#\/?(?:\?.*)?$/.test(w.location.hash))hideOverlay();else{overlayReady=true;settleOverlay();}w.MosaicStartup?.finish();schedule();}
   function error(message){complete=true;readyBeforeBoot=true;hideOverlay();w.MosaicStartup?.cancel();var pending=d.querySelector('[data-mosaic-root] [data-mosaic-loading]');if(pending){var notice=d.createElement('p');notice.setAttribute('role','alert');notice.textContent=String(message||'Mosaic could not finish loading.');pending.replaceWith(notice);}if(state.active){var event=new w.CustomEvent('mosaic:host-error',{detail:{message:String(message||'Mosaic could not finish loading.')}});d.dispatchEvent(event);} }
   function activate(generation) {
     if(generation!==epoch||forbidden())return;
@@ -1219,10 +1226,10 @@
     if(w.matchMedia){fontMedia=w.matchMedia('(prefers-color-scheme: dark)');fontMedia.addEventListener?.('change',refreshSurface);}
   }
   function refreshSurface(){surfaceDirty=true;schedule();}
-  function onPageHide(event){if(!event.persisted)destroy();else hideTooltip();}
+  function onPageHide(event){if(overlay){complete=true;readyBeforeBoot=true;hideOverlay();}if(!event.persisted)destroy();else hideTooltip();}
   function onPageShow(event){if(event.persisted){surfaceDirty=true;schedule();}}
   function onStylesheet(event){if(event.target.matches?.('link[rel="stylesheet"]'))refreshSurface();}
-  function onNavigate(){if(forbidden())destroy();else{if(customEditor())ready();schedule();}}
+  function onNavigate(){if(forbidden())destroy();else{if(customEditor())ready();else if(overlay&&w.location.hash&&!/^#\/?(?:\?.*)?$/.test(w.location.hash)){complete=true;readyBeforeBoot=true;hideOverlay();}schedule();}}
   function boot(config) {
     var next=normalize(config);if(!next)return state;
     var id=pageId();if(cfg&&state.pageId===id&&(state.active||state.pending)){if(forbidden())destroy();else{if(customEditor())ready();schedule();}return state;}
@@ -2043,7 +2050,7 @@
     ];
     function pillars(items){return items.map(function(x){return '<article class="mo-card mo-pillar"><span class="mo-number">'+x[0]+'</span><h3>'+x[1]+'</h3><p>'+x[2]+'</p></article>';}).join('');}
     root.innerHTML='<div class="mo-about-page"><h1 class="mo-sr">About Mosaic</h1>'+
-      '<section class="mo-cube" aria-label="The meaning of Mosaic"><video muted loop playsinline preload="metadata" aria-hidden="true" tabindex="-1"'+(cfg.mode==='preview'&&cfg.previewPoster?' poster="'+esc(cfg.previewPoster)+'"':'')+'><source src="'+esc(cfg.videoUrl||cfg.contextPath+'/download/attachments/'+cfg.attachmentPageId+'/hero-cube.webm?api=v2')+'" type="video/webm"></video>'+
+      '<section class="mo-cube" aria-label="The meaning of Mosaic"><video autoplay muted loop playsinline preload="auto" aria-hidden="true" tabindex="-1"'+(cfg.mode==='preview'&&cfg.previewPoster?' poster="'+esc(cfg.previewPoster)+'"':'')+'><source src="'+esc(cfg.videoUrl||cfg.contextPath+'/download/attachments/'+cfg.attachmentPageId+'/hero-cube.webm?api=v2')+'"></video>'+
       '<div class="mo-cube-copy"><p class="mo-eyebrow">The foundations of our future</p><dl class="mo-acronym">'+acronym.map(function(row){return '<div><dt>'+row[0]+'</dt><dd>'+row[1]+(row[2]?' <small>'+row[2]+'</small>':'')+'</dd></div>';}).join('')+'</dl></div><button type="button" class="mo-video-toggle" aria-label="Pause animation" hidden><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 5v14M16 5v14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button><span class="mo-video-note" role="status"></span></section>'+
       '<div class="mo-about-body"><section class="mo-section mo-intro-split"><div><p class="mo-eyebrow">About us</p><h2>Powering the future<br>of custody.</h2></div><div><p>MOSAIC brings together modular technology and data-driven innovation to transform the custody lifecycle.</p><p>Our aim is a connected platform: reusable utilities, consistent data and coordinated workflows that help teams respond to change.</p></div></section>'+
       '<section class="mo-section"><div class="mo-section-top"><h2>Why Mosaic matters</h2></div><div class="mo-grid">'+pillars(challenges)+'</div></section>'+
@@ -2094,7 +2101,10 @@
     }
     function settled(error){
       pending=false;if(!wanted()){queued=false;pause();return;}
-      if(error){b.hidden=true;blocked=error.name!=='AbortError'&&error.name!=='NotSupportedError';if(blocked)note.textContent='Animation could not start automatically.';}
+      if(error){
+        b.hidden=true;if(error.name==='NotSupportedError'){unavailable('This browser cannot play the video format returned by the attachment.');return;}
+        blocked=error.name!=='AbortError';if(blocked)note.textContent=error.name==='NotAllowedError'?'Animation is paused by your browser.':'Animation could not start automatically.';
+      }
       var retry=queued&&v.paused;queued=false;if(retry)play();
     }
     function play(){
@@ -2116,7 +2126,11 @@
       if(event.type==='keydown'&&(event.ctrlKey||event.metaKey||event.altKey||['Shift','Control','Alt','Meta','Escape'].includes(event.key)))return;
       gestureTried=true;attempts=0;play();
     }
-    function unavailable(){if(disposed)return;failed=true;v.autoplay=false;pause();note.textContent=cfg.mode==='preview'?'Static reference · live hero-cube.webm playback requires Confluence.':'Animation unavailable. You can still explore Mosaic below.';}
+    function unavailable(message){
+      if(disposed)return;failed=true;queued=false;v.autoplay=false;pause();
+      var code=v.error&&v.error.code;
+      note.textContent=typeof message==='string'?message:code===2?'Animation could not be loaded. Check your connection or attachment access.':code===3?'This browser could not decode the animation.':code===4?'This browser cannot play the video format returned by the attachment.':'Animation unavailable. Check the attachment access and video format.';
+    }
     listen(b,'click',function(){var focused=d.activeElement===b;userPaused=true;v.autoplay=false;pause();note.textContent='Animation paused.';if(focused){var hero=v.closest('.mo-cube');hero.tabIndex=-1;hero.focus({preventScroll:true});}});
     listen(v,'playing',function(){if(wanted()){blocked=false;b.hidden=false;note.textContent='';}else pause();});
     listen(v,'pause',function(){b.hidden=true;});['loadedmetadata','loadeddata','canplay','canplaythrough'].forEach(function(type){listen(v,type,ready);});
