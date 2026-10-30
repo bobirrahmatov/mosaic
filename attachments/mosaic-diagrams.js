@@ -80,7 +80,7 @@
     var actions = add(toolbar, 'div', 'msg-actions');
     var expand = control(actions, 'Expand canvas', 'Expand diagram canvas', function () { var expanded = root.classList.toggle('msg-expanded'); expand.setAttribute('aria-expanded', String(expanded)); expand.textContent = expanded ? 'Reduce canvas' : 'Expand canvas'; expand.setAttribute('aria-label', expanded ? 'Reduce diagram canvas' : 'Expand diagram canvas'); refresh(); }); expand.setAttribute('aria-expanded', 'false');
     var clear = control(actions, 'Clear focus', 'Clear selected component', function () { select(null); }); clear.disabled = true;
-    var help = add(root, 'p', 'msg-help', 'Drag empty canvas or use the scrollbars to pan. Use + / − to zoom and Fit for the full view. Select a component to follow its connections.'); help.id = uid + '-help';
+    var help = add(root, 'p', 'msg-help', 'Scroll to move through the page. Drag empty canvas or focus it and use arrow keys to pan. Use + / − to zoom and Fit for the full view.'); help.id = uid + '-help';
     var viewport = add(root, 'div', 'msg-viewport'); viewport.id = uid + '-viewport'; viewport.tabIndex = 0; viewport.setAttribute('role', 'region'); viewport.setAttribute('aria-label', 'Interactive strategic architecture diagram'); viewport.setAttribute('aria-describedby', help.id); expand.setAttribute('aria-controls', viewport.id);
     var stage = add(viewport, 'div', 'msg-stage');
     var drawing = svg('svg', {class:'msg-svg',viewBox:'0 0 ' + data.width + ' ' + data.height,role:'group','aria-labelledby':uid + '-title','aria-describedby':uid + '-description'}); stage.appendChild(drawing);

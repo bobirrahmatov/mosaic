@@ -116,7 +116,7 @@
 :is(#mosaic,body) .msg-root .msg-control:focus-visible,:is(#mosaic,body) .msg-root .msg-viewport:focus-visible{outline:3px solid var(--msg-focus);outline-offset:3px}
 :is(#mosaic,body) .msg-root .msg-percentage{font-variant-numeric:tabular-nums;font-size:12px;min-width:45px;text-align:center;color:var(--msg-muted)}
 :is(#mosaic,body) .msg-root .msg-help{font-size:12px;line-height:1.6;color:var(--msg-muted);margin:0;padding:0 30px 20px}
-:is(#mosaic,body) .msg-root .msg-viewport{height:clamp(400px,61vh,710px);overflow:auto;max-width:100%;border:1px solid var(--msg-border);border-width:1px 0;background:var(--msg-surface);overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--msg-muted) var(--msg-subtle);cursor:grab;position:relative}
+:is(#mosaic,body) .msg-root .msg-viewport{height:clamp(400px,61vh,710px);overflow-x:auto;overflow-y:hidden;max-width:100%;border:1px solid var(--msg-border);border-width:1px 0;background:var(--msg-surface);overscroll-behavior:auto;scrollbar-width:thin;scrollbar-color:var(--msg-muted) var(--msg-subtle);cursor:grab;position:relative}
 :is(#mosaic,body) .msg-root.msg-expanded .msg-viewport{height:84vh;min-height:500px}
 :is(#mosaic,body) .msg-root.msg-dragging .msg-viewport{cursor:grabbing;user-select:none}
 :is(#mosaic,body) .msg-root .msg-stage{position:relative}
